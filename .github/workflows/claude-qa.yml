@@ -1,0 +1,35 @@
+name: Claude QA (browser E2E)
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Build & start web app
+        run: |
+          npx turbo run build --filter=web
+          (npm --workspace apps/web run start &) 
+          npx wait-on http://localhost:3000
+      - name: Black-box QA with Claude + Playwright MCP
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            The web app is running at http://localhost:3000.
+            Read the linked Jira ticket's acceptance criteria from the PR body,
+            test each through the UI with Playwright, and post a PASS/FAIL table
+            as a PR comment. Do NOT read application source.
+          claude_args: |
+            --model claude-opus-4-8
+            --max-turns 25
+            --mcp-config '{"mcpServers":{"playwright":{"command":"npx","args":["-y","@playwright/mcp@latest","--headless"]}}}'
+            --allowedTools "mcp__playwright__browser_navigate,mcp__playwright__browser_click,mcp__playwright__browser_type,mcp__playwright__browser_snapshot,mcp__playwright__browser_take_screenshot,Bash(gh pr comment:*)"

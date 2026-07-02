@@ -1,0 +1,11 @@
+{
+  "mode": "supervised",
+  "model": "claude-opus-4-8",
+  "architectureDoc": "docs/HEP_ARCHITECTURE.md",
+  "sourceDoc": "docs/HEP_Master_Plan_SSoT.md",
+  "jiraProject": "HEP",
+  "maxTicketsPerRun": 1,
+  "parallel": 1,
+  "maxTurns": 500,
+  "bugFixMaxAttempts": 3
+}
