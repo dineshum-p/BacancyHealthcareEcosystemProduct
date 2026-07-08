@@ -3,6 +3,7 @@ import { Pool, QueryResult } from 'pg';
 import { PG_POOL } from '../database/database.tokens';
 import { Tenant } from './tenant.entity';
 import { TenantStatus } from './tenant-status.enum';
+import { assertSafeSchemaName } from './schema-identifier.util';
 
 interface TenantRow {
   id: string;
@@ -33,6 +34,10 @@ export class TenantsRepository {
   }
 
   async create(tenant: Tenant): Promise<Tenant> {
+    // Defense-in-depth: validate at write time too, not just at usage time
+    // (`quoteSchemaIdentifier`), so an unsafe/corrupted schema_name can
+    // never reach the tenants table in the first place (BAC-4 review).
+    assertSafeSchemaName(tenant.schemaName);
     const result: QueryResult<TenantRow> = await this.pool.query(
       `INSERT INTO public.tenants (id, slug, status, schema_name)
        VALUES ($1, $2, $3, $4)

@@ -44,4 +44,17 @@ describe('TenantsRepository', () => {
       created,
     );
   });
+
+  it('refuses to persist a tenant with an unsafe schema name', async () => {
+    await expect(
+      repository.create({
+        id: 'tenant-3',
+        slug: 'evil',
+        status: TenantStatus.ACTIVE,
+        schemaName: 'bad; drop table x;',
+      }),
+    ).rejects.toThrow(/unsafe schema name/i);
+
+    await expect(repository.findByIdentifier('evil')).resolves.toBeNull();
+  });
 });

@@ -1,9 +1,32 @@
 import { EventEmitter } from 'node:events';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { TenantContextService } from './tenant-context.service';
 import { RequestWithTenant } from './request-with-tenant.interface';
 import { TenantStatus } from '../tenants/tenant-status.enum';
 import { createInMemoryPool } from '../../test/support/create-in-memory-pool';
+
+/**
+ * `Pool#connect` and `PoolClient#query` are overloaded with callback-style
+ * signatures alongside their promise-returning ones, so `jest.spyOn` infers
+ * an intersection type that rejects a promise-returning mock implementation.
+ * These helpers pin the mock to the promise-returning overload actually used
+ * in production code.
+ */
+function mockConnectOnce(target: Pool, client: PoolClient): void {
+  const spy = jest.spyOn(target, 'connect') as unknown as jest.SpyInstance<
+    Promise<PoolClient>,
+    []
+  >;
+  spy.mockImplementationOnce(() => Promise.resolve(client));
+}
+
+function mockQueryRejectionOnce(client: PoolClient, error: Error): void {
+  const spy = jest.spyOn(client, 'query') as unknown as jest.SpyInstance<
+    Promise<never>,
+    unknown[]
+  >;
+  spy.mockImplementationOnce(() => Promise.reject(error));
+}
 
 function makeRequest(): RequestWithTenant {
   const emitter = new EventEmitter();
@@ -84,5 +107,48 @@ describe('TenantContextService', () => {
     const service = new TenantContextService(request, pool);
 
     await expect(service.getSchemaBoundClient()).rejects.toThrow();
+  });
+
+  it('releases the checked-out client back to the pool when schema validation fails', async () => {
+    const request = makeRequest();
+    request.tenant = {
+      id: '1',
+      slug: 'acme',
+      status: TenantStatus.ACTIVE,
+      schemaName: 'bad; drop table x;',
+    };
+    const service = new TenantContextService(request, pool);
+
+    const realClient = await pool.connect();
+    realClient.release();
+    const releaseSpy = jest.spyOn(realClient, 'release');
+    mockConnectOnce(pool, realClient);
+
+    await expect(service.getSchemaBoundClient()).rejects.toThrow();
+
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the checked-out client back to the pool when SET search_path fails', async () => {
+    const request = makeRequest();
+    request.tenant = {
+      id: '1',
+      slug: 'acme',
+      status: TenantStatus.ACTIVE,
+      schemaName: 'tenant_acme',
+    };
+    const service = new TenantContextService(request, pool);
+
+    const realClient: PoolClient = await pool.connect();
+    realClient.release();
+    const releaseSpy = jest.spyOn(realClient, 'release');
+    mockQueryRejectionOnce(realClient, new Error('SET search_path failed'));
+    mockConnectOnce(pool, realClient);
+
+    await expect(service.getSchemaBoundClient()).rejects.toThrow(
+      'SET search_path failed',
+    );
+
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
   });
 });

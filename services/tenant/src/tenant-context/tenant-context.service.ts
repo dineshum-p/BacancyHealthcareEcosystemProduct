@@ -58,8 +58,18 @@ export class TenantContextService {
   private async createClient(): Promise<PoolClient> {
     const tenant = this.getTenant();
     const client = await this.pool.connect();
-    const schema = quoteSchemaIdentifier(tenant.schemaName);
-    await client.query(`SET search_path TO ${schema}, public`);
+
+    try {
+      const schema = quoteSchemaIdentifier(tenant.schemaName);
+      await client.query(`SET search_path TO ${schema}, public`);
+    } catch (error) {
+      // Discard rather than return to the pool: we can't be sure the
+      // connection wasn't left in a bad state by the failed setup, and
+      // never releasing at all would leak it out of the pool permanently
+      // (see BAC-4 review finding).
+      client.release(true);
+      throw error;
+    }
 
     this.request.once?.('close', () => {
       this.releaseClient();
