@@ -54,6 +54,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
     };
@@ -67,6 +69,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
     };
@@ -83,6 +87,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
     };
@@ -101,6 +107,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'bad; drop table x;',
     };
@@ -114,6 +122,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'bad; drop table x;',
     };
@@ -134,6 +144,8 @@ describe('TenantContextService', () => {
     request.tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
     };

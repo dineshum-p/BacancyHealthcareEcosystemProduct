@@ -26,18 +26,24 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
   const tenantA = await tenantsRepository.create({
     id: randomUUID(),
     slug: 'tenant-a',
+    name: 'Tenant A',
+    plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_a',
   });
   const tenantB = await tenantsRepository.create({
     id: randomUUID(),
     slug: 'tenant-b',
+    name: 'Tenant B',
+    plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_b',
   });
   const inactiveTenant = await tenantsRepository.create({
     id: randomUUID(),
     slug: 'tenant-inactive',
+    name: 'Tenant Inactive',
+    plan: 'starter',
     status: TenantStatus.INACTIVE,
     schemaName: 'tenant_inactive',
   });

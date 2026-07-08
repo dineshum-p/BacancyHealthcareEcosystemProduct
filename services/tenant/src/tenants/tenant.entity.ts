@@ -9,6 +9,10 @@ import { TenantStatus } from './tenant-status.enum';
 export interface Tenant {
   id: string;
   slug: string;
+  /** Human-readable display name supplied at onboarding time (BAC-3). */
+  name: string;
+  /** Subscription/billing plan identifier supplied at onboarding (BAC-3). */
+  plan: string;
   status: TenantStatus;
   schemaName: string;
 }

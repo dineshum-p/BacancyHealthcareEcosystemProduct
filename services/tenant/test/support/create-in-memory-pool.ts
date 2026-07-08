@@ -21,14 +21,20 @@ export function createInMemoryPool(): Pool {
   return new PgCompatiblePool();
 }
 
-/** Bootstraps the `public.tenants` registry table (mirrors the migration DDL). */
+/**
+ * Bootstraps the `public.tenants` registry table (mirrors the migration DDL,
+ * including the BAC-3 `1752019200000_add-tenant-onboarding-fields` follow-up
+ * migration: `name`/`plan` columns and the `pending` status).
+ */
 export async function createTenantsTable(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE TABLE public.tenants (
       id TEXT PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL CHECK (status IN ('active', 'inactive')),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'inactive')),
       schema_name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      plan TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
