@@ -105,10 +105,7 @@ export class TenantsRepository {
    * transition once provisioning succeeds). Returns `null` if no tenant
    * with that id exists.
    */
-  async updateStatus(
-    id: string,
-    status: TenantStatus,
-  ): Promise<Tenant | null> {
+  async updateStatus(id: string, status: TenantStatus): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
       `UPDATE public.tenants
        SET status = $2
