@@ -96,3 +96,37 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Tenant context & schema isolation (BAC-4)
+
+This service resolves tenant context per request and enforces Postgres
+schema-per-tenant isolation.
+
+- `X-Tenant-Id` header (or a `<slug>.*.*` subdomain) resolves the tenant.
+  Unknown tenants get `404`, inactive tenants get `403`.
+- `TenantGuard` (`src/tenant-context/tenant.guard.ts`) performs the
+  resolution/validation before any handler runs.
+- `TenantContextService` (`src/tenant-context/tenant-context.service.ts`) is
+  a request-scoped provider exposing the resolved `Tenant` and a Postgres
+  client bound to that tenant's schema (`SET search_path`) for the rest of
+  the request.
+- `GET /tenant-context/me` and the `items` resource (`GET/POST /items`) are
+  guarded sample endpoints demonstrating the pattern end-to-end.
+- `src/tenants/` holds the minimum BAC-3 provisioning primitives BAC-4 needs:
+  a `tenants` registry table (`migrations/`) and a
+  `TenantSchemaProvisioner` helper that creates an isolated schema + sample
+  `items` table per tenant.
+
+### Running integration tests against real Postgres
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+cp .env.example .env
+npm run migrate:up
+DB_HOST=localhost DB_PORT=5544 DB_USER=tenant_service DB_PASSWORD=tenant_service DB_NAME=tenant_service npm run test:e2e
+```
+
+`test/tenant-isolation.e2e-spec.ts` overrides the `PG_POOL` provider with an
+in-memory, spec-compliant SQL engine (`pg-mem`) so it can run without a
+docker daemon; the production code path (real `pg` Pool against real
+Postgres) is unchanged and is what `docker-compose.test.yml` exercises.
