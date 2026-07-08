@@ -27,6 +27,8 @@ describe('ItemsRepository', () => {
   const tenant: Tenant = {
     id: '1',
     slug: 'acme',
+    name: 'Acme Inc',
+    plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
   };

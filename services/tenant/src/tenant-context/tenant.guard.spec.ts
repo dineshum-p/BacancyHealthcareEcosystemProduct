@@ -53,7 +53,28 @@ describe('TenantGuard', () => {
     tenantsRepository.findByIdentifier.mockResolvedValue({
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.INACTIVE,
+      schemaName: 'tenant_acme',
+    });
+    const request = {
+      headers: { 'x-tenant-id': 'acme' },
+    } as unknown as RequestWithTenant;
+
+    await expect(
+      guard.canActivate(makeContext(request)),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(request.tenant).toBeUndefined();
+  });
+
+  it('rejects pending (not yet provisioned) tenants with 403, same as inactive (BAC-3)', async () => {
+    tenantsRepository.findByIdentifier.mockResolvedValue({
+      id: '1',
+      slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
+      status: TenantStatus.PENDING,
       schemaName: 'tenant_acme',
     });
     const request = {
@@ -70,6 +91,8 @@ describe('TenantGuard', () => {
     const tenant = {
       id: '1',
       slug: 'acme',
+      name: 'Acme Inc',
+      plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
     };
