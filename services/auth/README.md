@@ -121,6 +121,50 @@ Configurable via env (`.env.example`): `JWT_ACCESS_SECRET`,
 `ACCESS_TOKEN_TTL_SECONDS` (default 900 = 15 min),
 `REFRESH_TOKEN_TTL_SECONDS` (default 604800 = 7 days).
 
+## RBAC: roles, permissions, and bootstrap-admin resolution (BAC-7)
+
+- `GET /auth/roles` returns the seeded role -> permission-set catalog
+  (`super_admin`, `clinic_admin`, `provider`, `staff`). Requires
+  authentication only, since it's read-only metadata about the RBAC model
+  itself, not tenant- or user-specific data.
+- `PATCH /auth/users/:id/role` reassigns a user's role. Requires the caller
+  to hold `MANAGE_USER_ROLES` (`PermissionsGuard`); the target user must
+  belong to the caller's own resolved tenant (a cross-tenant id 404s the
+  same way an unknown one does -- tenant isolation is structural, not a
+  post-hoc check). The new role takes effect on the target's *next* issued
+  token (next login / `/auth/refresh`); it does not retroactively revoke an
+  already-issued access token.
+
+### Bootstrap-admin resolution
+
+Role assignment itself requires an *existing* `MANAGE_USER_ROLES` holder,
+which raises an obvious bootstrap question: how does a brand-new tenant ever
+get its first `super_admin`?
+
+This is resolved by binding promotion to the tenant's `ownerEmail` -- a
+required, validated field set once, at tenant-creation time, on
+`services/tenant`'s `POST /tenants` (`CreateTenantDto.ownerEmail`) and
+persisted on the shared `public.tenants` row. `services/auth` mirrors that
+row read-only (`TenantsRepository`) and, on `POST /auth/register`, promotes
+the new user to `super_admin` if and only if the registering email
+(case-insensitive, exact match) equals the resolved tenant's `ownerEmail`;
+every other registration gets the ordinary default, `staff`.
+
+This is deliberately **not** "whoever registers first" (an earlier design
+this ticket replaced after a review finding: an unauthenticated caller who
+simply knew or guessed a tenant's slug could win the race to register first
+and become its sole `super_admin`, with no link at all between tenant
+creation and who is allowed to administer it). Binding to `ownerEmail`
+closes that exploit outright -- an attacker without the owner's exact email
+can never be promoted, no matter how many registrations they attempt or how
+fast they race to be first -- and it is inherently race-proof as a side
+effect: only that one specific email string can ever trigger promotion, and
+the `users` table's `UNIQUE(email)` constraint already guarantees that
+exact email can never register twice, so two concurrent registrations can
+never both be "the owner". A tenant row that predates this column has a
+`null` `ownerEmail` and simply has no bootstrap-eligible email going
+forward (an existing, accepted gap for pre-BAC-7 data, not a new one).
+
 ## MFA: TOTP enrollment, activation, and login enforcement (BAC-6)
 
 ### Endpoints

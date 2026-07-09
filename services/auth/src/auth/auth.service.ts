@@ -114,29 +114,34 @@ export class AuthService {
    * requires an EXISTING role-manager (`MANAGE_USER_ROLES`) to grant a role,
    * which creates a bootstrap problem -- there would be no way to ever get a
    * `super_admin` for a brand-new tenant via the API alone. This is resolved
-   * minimally, without a separate seeding/admin-invite feature: the FIRST
-   * user ever registered for a given tenant (`usersRepository.count() ===
-   * 0`, checked against THIS tenant's schema only) is automatically assigned
-   * `SUPER_ADMIN` instead of the default `STAFF`; every subsequent
-   * registration in that tenant gets `DEFAULT_REGISTRATION_ROLE` (`STAFF`,
-   * the least-privileged role -- a safe, unprivileged default for anyone who
+   * minimally, without a separate seeding/admin-invite feature, by binding
+   * promotion to the tenant's `ownerEmail` (set once, at tenant-creation
+   * time -- see `services/tenant`'s `CreateTenantDto` -- and mirrored
+   * read-only here via `TenantsRepository`): a registration is promoted to
+   * `SUPER_ADMIN` if and only if its (case-insensitively normalized) email
+   * exactly matches the resolved tenant's `ownerEmail`; every other
+   * registration gets `DEFAULT_REGISTRATION_ROLE` (`STAFF`, the
+   * least-privileged role -- a safe, unprivileged default for anyone who
    * self-registers rather than being invited/promoted by an admin).
    *
-   * Not race-proof: two concurrent first-ever registrations for the same
-   * brand-new tenant could both observe `count() === 0` and both become
-   * `super_admin`. Accepted as a minimal, self-contained fix per this
-   * ticket's scope -- a real invite/seeding flow (out of scope here) would
-   * close this gap properly.
+   * This closes the previous "whoever registers first" exploit (anyone who
+   * guessed/knew a tenant's slug could win the race to become its sole
+   * super_admin) AND is inherently race-proof: only the one specific
+   * `ownerEmail` string can ever trigger promotion, not "whoever's first",
+   * and the `users` table's `UNIQUE(email)` constraint already prevents that
+   * exact email from ever registering twice -- so two concurrent
+   * registrations can never both be the owner. A tenant whose `ownerEmail`
+   * is `null` (a row that predates this column) simply has no
+   * bootstrap-eligible email going forward.
    */
   async register(dto: RegisterDto): Promise<RegisteredUser> {
     await this.ensureSchema();
     const email = normalizeEmail(dto.email);
     const passwordHash = await hashPassword(dto.password);
-    const existingUserCount = await this.usersRepository.count();
-    const role =
-      existingUserCount === 0
-        ? UserRole.SUPER_ADMIN
-        : DEFAULT_REGISTRATION_ROLE;
+    const tenant = this.tenantContext.getTenant();
+    const isOwner =
+      tenant.ownerEmail !== null && email === normalizeEmail(tenant.ownerEmail);
+    const role = isOwner ? UserRole.SUPER_ADMIN : DEFAULT_REGISTRATION_ROLE;
 
     try {
       const user = await this.usersRepository.create({

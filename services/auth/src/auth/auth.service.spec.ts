@@ -59,6 +59,10 @@ describe('AuthService', () => {
     plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
+    // Deliberately NOT `dto.email` below (normalized: `ada@example.com`),
+    // so the ordinary register() tests exercise the non-owner/default-STAFF
+    // path without needing to know about bootstrap-admin resolution at all.
+    ownerEmail: 'owner@example.com',
   };
 
   beforeEach(() => {
@@ -66,11 +70,6 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
-      // Defaults to "not the first user for this tenant" (BAC-7 bootstrap
-      // check) so pre-existing register tests -- which are about email
-      // normalization/hashing/duplicate handling, not the bootstrap-admin
-      // case -- keep getting the ordinary default role. The dedicated
-      // bootstrap-admin tests below override this to `0`.
       count: jest.fn().mockResolvedValue(1),
       updateRole: jest.fn(),
       startMfaEnrollment: jest.fn().mockResolvedValue(undefined),
@@ -132,7 +131,7 @@ describe('AuthService', () => {
       );
     });
 
-    it("normalizes the email to lowercase and defaults role to staff (AC1, BAC-7) when not the tenant's first user", async () => {
+    it("normalizes the email to lowercase and defaults role to staff (AC1, BAC-7) when the email does not match the tenant's ownerEmail", async () => {
       usersRepository.create.mockImplementation((user) =>
         Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
@@ -188,8 +187,11 @@ describe('AuthService', () => {
     });
 
     describe('bootstrap-admin resolution (BAC-7)', () => {
-      it('assigns SUPER_ADMIN when this is the first user for the tenant', async () => {
-        usersRepository.count.mockResolvedValue(0);
+      it("assigns SUPER_ADMIN when the registering email exactly matches the tenant's ownerEmail", async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'ada@example.com',
+        });
         usersRepository.create.mockImplementation((user) =>
           Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
         );
@@ -203,8 +205,26 @@ describe('AuthService', () => {
         expect(result.role).toBe(UserRole.SUPER_ADMIN);
       });
 
-      it('assigns the default STAFF role when the tenant already has at least one user', async () => {
-        usersRepository.count.mockResolvedValue(1);
+      it('assigns SUPER_ADMIN when the registering email matches ownerEmail case-insensitively', async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'ADA@EXAMPLE.COM',
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        expect(result.role).toBe(UserRole.SUPER_ADMIN);
+      });
+
+      it("assigns the default STAFF role when the registering email does NOT match ownerEmail, even when it is genuinely the tenant's first registration", async () => {
+        usersRepository.count.mockResolvedValue(0);
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'someone-else@example.com',
+        });
         usersRepository.create.mockImplementation((user) =>
           Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
         );
@@ -218,8 +238,21 @@ describe('AuthService', () => {
         expect(result.role).toBe(UserRole.STAFF);
       });
 
-      it('checks the count scoped to the current tenant AFTER ensuring the schema exists', async () => {
-        usersRepository.count.mockResolvedValue(0);
+      it('assigns the default STAFF role when the tenant has no ownerEmail (a pre-BAC-7 row)', async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: null,
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        expect(result.role).toBe(UserRole.STAFF);
+      });
+
+      it('resolves the tenant AFTER ensuring the schema exists', async () => {
         usersRepository.create.mockImplementation((user) =>
           Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
         );
@@ -231,7 +264,7 @@ describe('AuthService', () => {
           'tenant_acme',
         );
         // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
-        expect(usersRepository.count).toHaveBeenCalled();
+        expect(tenantContext.getTenant).toHaveBeenCalled();
       });
     });
   });

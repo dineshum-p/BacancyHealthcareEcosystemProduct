@@ -24,7 +24,11 @@ import {
   createInMemoryPool,
   createTenantsTable,
 } from './support/create-in-memory-pool';
-import { seedTestTenants, SeededTenants } from './support/tenant-fixtures';
+import {
+  seedTestTenants,
+  SeededTenants,
+  createAdditionalTenant,
+} from './support/tenant-fixtures';
 
 /**
  * Proves BAC-5's acceptance criteria end-to-end against a real (not mocked)
@@ -77,18 +81,19 @@ describe('Auth (e2e)', () => {
   }
 
   it('AC1: registers a user scoped to the tenant, hashed, and returns 201 without the hash', async () => {
-    const email = uniqueEmail();
+    // BAC-7: registering with tenant A's exact `ownerEmail` (set at
+    // tenant-creation time, see `test/support/tenant-fixtures.ts`) is what
+    // triggers bootstrap-admin promotion now -- NOT "being first" -- so this
+    // test uses it deliberately. See the dedicated "BAC-7: role-based access
+    // control" describe block below for the non-owner default and the rest
+    // of the RBAC surface.
+    const email = tenants.tenantA.ownerEmail as string;
     const response = await request(app.getHttpServer())
       .post('/auth/register')
       .set('X-Tenant-Id', tenants.tenantA.slug)
       .send({ email, password: 'super-secret-1' })
       .expect(201);
 
-    // BAC-7: this is the FIRST-EVER registration against tenant A's schema
-    // in this describe block (the bootstrap-admin case), so the assigned
-    // role is `super_admin`, not the ordinary default `staff` -- see the
-    // dedicated "BAC-7: role-based access control" describe block below for
-    // the non-first-user default and the rest of the RBAC surface.
     expect(response.body).toMatchObject({ email, role: 'super_admin' });
     expect(response.body).not.toHaveProperty('passwordHash');
     expect(response.body).not.toHaveProperty('password');
@@ -140,9 +145,9 @@ describe('Auth (e2e)', () => {
     const claims = decode(body.accessToken) as AccessTokenPayload;
     expect(claims).toMatchObject({
       tenantId: tenants.tenantA.id,
-      // BAC-7: NOT the tenant's first-ever user by this point in the file
-      // (the AC1 test above already registered one), so this gets the
-      // ordinary default role, `staff`.
+      // BAC-7: this `uniqueEmail()` is NOT tenant A's `ownerEmail`, so this
+      // gets the ordinary default role, `staff`, regardless of registration
+      // order.
       role: 'staff',
     });
     expect(typeof claims.userId).toBe('string');
@@ -308,20 +313,22 @@ describe('Auth (e2e)', () => {
   /**
    * BAC-7: RBAC. Uses `tenants.rbacTenant` (a tenant used ONLY by this
    * describe block, per `test/support/tenant-fixtures.ts`'s doc comment) so
-   * "the first user registered is automatically super_admin" is
-   * deterministic and doesn't depend on execution order relative to
-   * `tenantA`/`tenantB`'s other uses above.
+   * the bootstrap-admin (`ownerEmail`) case is deterministic and doesn't
+   * depend on execution order relative to `tenantA`/`tenantB`'s other uses
+   * above.
    */
   describe('BAC-7: role-based access control', () => {
     let rootUserId: string;
     let rootAccessToken: string;
 
-    async function registerAndLogin(tenantSlug: string): Promise<{
+    async function registerAndLogin(
+      tenantSlug: string,
+      email: string = uniqueEmail(),
+    ): Promise<{
       userId: string;
       email: string;
       accessToken: string;
     }> {
-      const email = uniqueEmail();
       const password = 'super-secret-1';
       const registerResponse = await request(app.getHttpServer())
         .post('/auth/register')
@@ -341,15 +348,37 @@ describe('Auth (e2e)', () => {
     }
 
     beforeAll(async () => {
-      // The FIRST-EVER registration against `rbacTenant`'s schema --
-      // bootstrap-admin resolution (BAC-7) makes this user `super_admin`.
-      const bootstrap = await registerAndLogin(tenants.rbacTenant.slug);
+      // Registering with `rbacTenant`'s exact `ownerEmail` (set at
+      // tenant-creation time) -- NOT merely being first -- is what makes
+      // bootstrap-admin resolution (BAC-7) promote this user to
+      // `super_admin`.
+      const bootstrap = await registerAndLogin(
+        tenants.rbacTenant.slug,
+        tenants.rbacTenant.ownerEmail as string,
+      );
       rootUserId = bootstrap.userId;
       rootAccessToken = bootstrap.accessToken;
     });
 
-    it('AC1 (bootstrap): the first user registered for a tenant is automatically super_admin', () => {
+    it("AC1 (bootstrap): registering with the tenant's exact ownerEmail is automatically super_admin", () => {
       const claims = decode(rootAccessToken) as AccessTokenPayload;
+      expect(claims.role).toBe('super_admin');
+    });
+
+    it('AC1 (bootstrap, case-insensitive): ownerEmail matching is case-insensitive', async () => {
+      // A fresh tenant so this owner-email can register exactly once
+      // without colliding with `rbacTenant`'s already-registered owner.
+      const ownerEmail = 'Owner-Case@Example.com';
+      const tenant = await createAdditionalTenant(pool, {
+        slug: `rbac-case-${randomUUID()}`,
+        ownerEmail,
+      });
+
+      const { accessToken } = await registerAndLogin(
+        tenant.slug,
+        ownerEmail.toUpperCase(),
+      );
+      const claims = decode(accessToken) as AccessTokenPayload;
       expect(claims.role).toBe('super_admin');
     });
 
@@ -357,6 +386,43 @@ describe('Auth (e2e)', () => {
       const { accessToken } = await registerAndLogin(tenants.rbacTenant.slug);
       const claims = decode(accessToken) as AccessTokenPayload;
       expect(claims.role).toBe('staff');
+    });
+
+    it('AC1 (exploit closed): the FIRST-EVER registration for a brand-new tenant is STILL staff when it is not the ownerEmail', async () => {
+      const tenant = await createAdditionalTenant(pool, {
+        slug: `rbac-fresh-${randomUUID()}`,
+        ownerEmail: 'real-owner@example.com',
+      });
+
+      // An attacker who knows/guesses the tenant's slug but not its
+      // ownerEmail, registering FIRST, must still land as staff -- this is
+      // the exact exploit BAC-7 closes (previously: whoever registers first
+      // becomes the tenant's sole super_admin).
+      const { accessToken } = await registerAndLogin(
+        tenant.slug,
+        'attacker@example.com',
+      );
+      const claims = decode(accessToken) as AccessTokenPayload;
+      expect(claims.role).toBe('staff');
+    });
+
+    it('AC1 (race-proof): two concurrent registrations with different non-owner emails both land as staff', async () => {
+      const tenant = await createAdditionalTenant(pool, {
+        slug: `rbac-race-${randomUUID()}`,
+        ownerEmail: 'real-owner@example.com',
+      });
+
+      const [first, second] = await Promise.all([
+        registerAndLogin(tenant.slug, 'racer-one@example.com'),
+        registerAndLogin(tenant.slug, 'racer-two@example.com'),
+      ]);
+
+      expect((decode(first.accessToken) as AccessTokenPayload).role).toBe(
+        'staff',
+      );
+      expect((decode(second.accessToken) as AccessTokenPayload).role).toBe(
+        'staff',
+      );
     });
 
     it('AC1: GET /auth/roles returns the four seeded roles with their permission sets', async () => {
