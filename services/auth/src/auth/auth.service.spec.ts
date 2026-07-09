@@ -8,12 +8,28 @@ import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { TenantStatus } from '../tenants/tenant-status.enum';
 import { Tenant } from '../tenants/tenant.entity';
 import { UserRole } from './user-role.enum';
+import { MfaStatus } from './mfa-status.enum';
 import { User } from './user.entity';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
 import { hashPassword } from './password-hasher.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+
+/** BAC-6: default-MFA-off user literal, so BAC-5 tests don't need to know about MFA fields individually. */
+function makeUser(overrides: Partial<User> = {}): User {
+  return {
+    id: 'user-1',
+    email: 'ada@example.com',
+    passwordHash: 'irrelevant',
+    role: UserRole.MEMBER,
+    createdAt: new Date(),
+    mfaStatus: MfaStatus.NONE,
+    mfaSecretEncrypted: null,
+    mfaLastUsedStep: null,
+    ...overrides,
+  };
+}
 
 describe('AuthService', () => {
   let usersRepository: jest.Mocked<UsersRepository>;
@@ -73,7 +89,7 @@ describe('AuthService', () => {
 
     it('provisions the tenant schema before creating the user', async () => {
       usersRepository.create.mockImplementation((user) =>
-        Promise.resolve({ ...user, createdAt: new Date() }),
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
 
       await service.register(dto);
@@ -86,7 +102,7 @@ describe('AuthService', () => {
 
     it('normalizes the email to lowercase and defaults role to member (AC1)', async () => {
       usersRepository.create.mockImplementation((user) =>
-        Promise.resolve({ ...user, createdAt: new Date() }),
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
 
       const result = await service.register(dto);
@@ -108,7 +124,7 @@ describe('AuthService', () => {
 
     it('never returns the password hash', async () => {
       usersRepository.create.mockImplementation((user) =>
-        Promise.resolve({ ...user, createdAt: new Date() }),
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
 
       const result = await service.register(dto);
@@ -119,7 +135,7 @@ describe('AuthService', () => {
 
     it('stores an argon2 hash, not the plaintext password', async () => {
       usersRepository.create.mockImplementation((user) =>
-        Promise.resolve({ ...user, createdAt: new Date() }),
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
 
       await service.register(dto);
@@ -148,13 +164,7 @@ describe('AuthService', () => {
 
     it('issues access + refresh tokens for valid credentials (AC2)', async () => {
       const passwordHash = await hashPassword('correct-password');
-      const user: User = {
-        id: 'user-1',
-        email: 'ada@example.com',
-        passwordHash,
-        role: UserRole.MEMBER,
-        createdAt: new Date(),
-      };
+      const user: User = makeUser({ passwordHash });
       usersRepository.findByEmail.mockResolvedValue(user);
       refreshTokensRepository.create.mockImplementation((entry) =>
         Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
@@ -176,13 +186,7 @@ describe('AuthService', () => {
 
     it('persists a hash of the refresh token, never the raw value (AC4)', async () => {
       const passwordHash = await hashPassword('correct-password');
-      usersRepository.findByEmail.mockResolvedValue({
-        id: 'user-1',
-        email: 'ada@example.com',
-        passwordHash,
-        role: UserRole.MEMBER,
-        createdAt: new Date(),
-      });
+      usersRepository.findByEmail.mockResolvedValue(makeUser({ passwordHash }));
       refreshTokensRepository.create.mockImplementation((entry) =>
         Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
       );
@@ -207,13 +211,7 @@ describe('AuthService', () => {
 
     it('rejects a wrong password with the same uniform 401 (AC3)', async () => {
       const passwordHash = await hashPassword('correct-password');
-      usersRepository.findByEmail.mockResolvedValue({
-        id: 'user-1',
-        email: 'ada@example.com',
-        passwordHash,
-        role: UserRole.MEMBER,
-        createdAt: new Date(),
-      });
+      usersRepository.findByEmail.mockResolvedValue(makeUser({ passwordHash }));
 
       await expect(
         service.login({ ...dto, password: 'wrong-password' }),
@@ -230,13 +228,9 @@ describe('AuthService', () => {
       }
 
       const passwordHash = await hashPassword('correct-password');
-      usersRepository.findByEmail.mockResolvedValueOnce({
-        id: 'user-1',
-        email: 'ada@example.com',
-        passwordHash,
-        role: UserRole.MEMBER,
-        createdAt: new Date(),
-      });
+      usersRepository.findByEmail.mockResolvedValueOnce(
+        makeUser({ passwordHash }),
+      );
       let wrongPasswordMessage = '';
       try {
         await service.login({ ...dto, password: 'wrong-password' });
@@ -275,13 +269,7 @@ describe('AuthService', () => {
         revoked: false,
         createdAt: new Date(),
       });
-      usersRepository.findById.mockResolvedValue({
-        id: 'user-1',
-        email: 'ada@example.com',
-        passwordHash: 'irrelevant',
-        role: UserRole.MEMBER,
-        createdAt: new Date(),
-      });
+      usersRepository.findById.mockResolvedValue(makeUser());
 
       const result = await service.refresh(dto);
 
