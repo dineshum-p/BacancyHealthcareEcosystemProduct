@@ -67,8 +67,13 @@ describe('Tenant provisioning (e2e)', () => {
       plan: 'starter',
       status: 'active',
       schemaName: 'tenant_acme_corp',
-      ownerEmail: 'owner@acme-corp.example.com',
     });
+    // BAC-7 review: `ownerEmail` is the bootstrap-admin secret bound at
+    // tenant-creation time (see `AuthService.register`'s doc comment) and
+    // `POST /tenants` is deliberately UNAUTHENTICATED, so it must never
+    // appear in this response body -- otherwise anyone could read it back
+    // here and win the bootstrap-admin race.
+    expect(response.body).not.toHaveProperty('ownerEmail');
     const createdTenant = response.body as Tenant;
     expect(typeof createdTenant.id).toBe('string');
     expect(createdTenant.id.length).toBeGreaterThan(0);
@@ -151,6 +156,11 @@ describe('Tenant provisioning (e2e)', () => {
       slug: 'gamma-llc',
       status: 'active',
     });
+    // BAC-7 review: same reasoning as the POST assertion above -- `GET
+    // /tenants/:id` is also UNAUTHENTICATED, so learning a tenant's id (its
+    // slug or a guessed/enumerated UUID) must never be enough to also learn
+    // its `ownerEmail`.
+    expect(fetched.body).not.toHaveProperty('ownerEmail');
   });
 
   it('reflects the pending -> active provisioning status transition on GET (AC4)', async () => {
