@@ -410,6 +410,12 @@ describe('AuthService', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- generating a real code for the pending secret
       const { authenticator } = require('otplib') as typeof import('otplib');
       const dto: MfaVerifyDto = { totpCode: authenticator.generate(secret) };
+      // Captured immediately after code generation, not after `await
+      // service.verifyMfaEnrollment(...)` below: that call now hashes 10
+      // recovery codes with Argon2 (deliberately slow -- BAC-6 review fix),
+      // so enough wall-clock time can elapse during it to cross the 30s
+      // TOTP step boundary and flake a post-hoc `currentTotpStep()` call.
+      const expectedStep = currentTotpStep();
 
       const result = await service.verifyMfaEnrollment('user-1', dto);
 
@@ -418,7 +424,7 @@ describe('AuthService', () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
       expect(usersRepository.activateMfa).toHaveBeenCalledWith(
         'user-1',
-        currentTotpStep(),
+        expectedStep,
       );
     });
 
