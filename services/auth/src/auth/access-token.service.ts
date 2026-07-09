@@ -25,6 +25,7 @@ export class AccessTokenService {
     const token = this.jwtService.sign(payload, {
       secret: config.jwtAccessSecret,
       expiresIn: config.accessTokenTtlSeconds,
+      algorithm: 'HS256',
     });
     return { token, expiresIn: config.accessTokenTtlSeconds };
   }
@@ -33,6 +34,7 @@ export class AccessTokenService {
     const config = getAuthConfig();
     return this.jwtService.verify<AccessTokenPayload>(token, {
       secret: config.jwtAccessSecret,
+      algorithms: ['HS256'],
     });
   }
 }

@@ -42,6 +42,27 @@ describe('AccessTokenService', () => {
     expect(() => service.verify(token)).toThrow();
   });
 
+  it('pins signing/verification to HS256 and rejects an alg:none token', () => {
+    process.env.JWT_ACCESS_SECRET = 'test-secret';
+    const service = new AccessTokenService(new JwtService());
+
+    // Forge a token with `alg: none` (no signature) carrying an arbitrary
+    // payload -- this must never verify, regardless of secret.
+    const base64url = (obj: unknown) =>
+      Buffer.from(JSON.stringify(obj))
+        .toString('base64')
+        .replace(/=+$/, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
+    const forgedToken = `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({
+      userId: 'attacker',
+      tenantId: 'tenant-1',
+      role: UserRole.MEMBER,
+    })}.`;
+
+    expect(() => service.verify(forgedToken)).toThrow();
+  });
+
   it('rejects an expired token', async () => {
     process.env.JWT_ACCESS_SECRET = 'test-secret';
     process.env.ACCESS_TOKEN_TTL_SECONDS = '1';
