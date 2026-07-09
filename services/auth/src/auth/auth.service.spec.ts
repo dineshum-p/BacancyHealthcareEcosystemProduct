@@ -17,7 +17,7 @@ import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
 import { hashPassword } from './password-hasher.util';
 import { encryptTotpSecret } from './totp-secret-cipher.util';
 import { currentTotpStep, generateTotpSecret } from './totp.util';
-import { hashRecoveryCode } from './recovery-code.util';
+import { verifyRecoveryCode } from './recovery-code.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -435,13 +435,23 @@ describe('AuthService', () => {
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
       expect(mfaRecoveryCodesRepository.replaceAll).toHaveBeenCalledWith(
         'user-1',
-        result.recoveryCodes.map(hashRecoveryCode),
+        expect.arrayContaining([expect.any(String)]),
       );
       const [, persistedHashes] =
         mfaRecoveryCodesRepository.replaceAll.mock.calls[0];
+      expect(persistedHashes).toHaveLength(result.recoveryCodes.length);
       for (const rawCode of result.recoveryCodes) {
         expect(persistedHashes).not.toContain(rawCode);
       }
+      // Each raw code's hash is present (order-preserved) and verifies back
+      // to that same code via Argon2 -- not just "some string got stored".
+      await Promise.all(
+        result.recoveryCodes.map(async (rawCode, index) => {
+          await expect(
+            verifyRecoveryCode(persistedHashes[index], rawCode),
+          ).resolves.toBe(true);
+        }),
+      );
     });
 
     it('rejects an invalid code with 401 and does not activate MFA (AC4-style)', async () => {

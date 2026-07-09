@@ -220,9 +220,12 @@ export class AuthService {
     }
 
     const recoveryCodes = generateRecoveryCodes();
+    const recoveryCodeHashes = await Promise.all(
+      recoveryCodes.map(hashRecoveryCode),
+    );
     await this.mfaRecoveryCodesRepository.replaceAll(
       user.id,
-      recoveryCodes.map(hashRecoveryCode),
+      recoveryCodeHashes,
     );
 
     return { recoveryCodes };

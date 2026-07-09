@@ -188,12 +188,16 @@ read-then-write race window.
 
 ### Recovery codes
 
-`recovery-code.util.ts` generates 10 opaque, high-entropy codes
-(`XXXXX-XXXXX`, uppercase hex) per activation. Only their SHA-256 hashes are
-persisted (`mfa_recovery_codes`, write-only from this ticket's perspective).
-**No redemption endpoint exists** -- this ticket's ACs don't specify a
-recovery-code login flow, so it's a deliberate scope call (mirrors BAC-5's
-decision to skip a logout endpoint) rather than an oversight.
+`recovery-code.util.ts` generates 10 opaque, high-entropy codes (128 bits
+each, uppercase hex, formatted as 4 groups of 8:
+`XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`) per activation. Only their Argon2
+(argon2id) hashes are persisted (`mfa_recovery_codes`, write-only from this
+ticket's perspective) -- the same slow, per-call-salted hash used for
+passwords (`password-hasher.util.ts`), so a leaked `mfa_recovery_codes` table
+isn't quickly brute-forceable offline. **No redemption endpoint exists** --
+this ticket's ACs don't specify a recovery-code login flow, so it's a
+deliberate scope call (mirrors BAC-5's decision to skip a logout endpoint)
+rather than an oversight.
 
 ### Login-challenge design (AC3)
 

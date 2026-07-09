@@ -2,6 +2,7 @@ import {
   generateRecoveryCodes,
   hashRecoveryCode,
   RECOVERY_CODE_COUNT,
+  verifyRecoveryCode,
 } from './recovery-code.util';
 
 describe('recovery-code.util', () => {
@@ -12,12 +13,16 @@ describe('recovery-code.util', () => {
       expect(codes).toHaveLength(RECOVERY_CODE_COUNT);
     });
 
-    it('generates unique, high-entropy codes on each call', () => {
+    it('generates unique, high-entropy (128-bit) codes on each call', () => {
       const codes = generateRecoveryCodes();
 
       expect(new Set(codes).size).toBe(codes.length);
       for (const code of codes) {
-        expect(code).toMatch(/^[0-9A-F]{5}-[0-9A-F]{5}$/);
+        expect(code).toMatch(
+          /^[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}$/,
+        );
+        // 4 groups of 8 hex chars = 32 hex chars = 128 bits of entropy.
+        expect(code.replace(/-/g, '')).toHaveLength(32);
       }
     });
 
@@ -30,24 +35,42 @@ describe('recovery-code.util', () => {
     });
   });
 
-  describe('hashRecoveryCode', () => {
-    it('is deterministic (same code -> same hash, for lookup)', () => {
-      expect(hashRecoveryCode('ABCDE-12345')).toBe(
-        hashRecoveryCode('ABCDE-12345'),
-      );
+  describe('hashRecoveryCode / verifyRecoveryCode', () => {
+    it('hashes a code into something other than the plaintext', async () => {
+      const hash = await hashRecoveryCode('ABCDE1234-FGHIJ5678');
+
+      expect(hash).not.toBe('ABCDE1234-FGHIJ5678');
+      expect(hash).not.toContain('ABCDE1234-FGHIJ5678');
+      expect(hash.length).toBeGreaterThan(0);
     });
 
-    it('never returns the raw code', () => {
-      const hash = hashRecoveryCode('ABCDE-12345');
+    it('produces different hashes for the same code (random salt, like passwords)', async () => {
+      const hashA = await hashRecoveryCode('ABCDE1234-FGHIJ5678');
+      const hashB = await hashRecoveryCode('ABCDE1234-FGHIJ5678');
 
-      expect(hash).not.toBe('ABCDE-12345');
-      expect(hash).not.toContain('ABCDE-12345');
+      expect(hashA).not.toBe(hashB);
     });
 
-    it('produces different hashes for different codes', () => {
-      expect(hashRecoveryCode('ABCDE-12345')).not.toBe(
-        hashRecoveryCode('FGHIJ-67890'),
-      );
+    it('verifies a correct code against its hash', async () => {
+      const hash = await hashRecoveryCode('ABCDE1234-FGHIJ5678');
+
+      await expect(
+        verifyRecoveryCode(hash, 'ABCDE1234-FGHIJ5678'),
+      ).resolves.toBe(true);
+    });
+
+    it('rejects an incorrect code against a real hash', async () => {
+      const hash = await hashRecoveryCode('ABCDE1234-FGHIJ5678');
+
+      await expect(
+        verifyRecoveryCode(hash, 'WRONGCODE-000000000'),
+      ).resolves.toBe(false);
+    });
+
+    it('rejects rather than throws on a malformed hash', async () => {
+      await expect(
+        verifyRecoveryCode('not-a-real-argon2-hash', 'anything'),
+      ).resolves.toBe(false);
     });
   });
 });
