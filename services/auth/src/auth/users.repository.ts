@@ -4,6 +4,7 @@ import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { quoteSchemaIdentifier } from '../tenants/schema-identifier.util';
 import { User } from './user.entity';
 import { UserRole } from './user-role.enum';
+import { MfaStatus } from './mfa-status.enum';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
 
 interface UserRow {
@@ -12,7 +13,13 @@ interface UserRow {
   password_hash: string;
   role: string;
   created_at: Date;
+  mfa_status: string;
+  mfa_secret_encrypted: string | null;
+  mfa_last_used_step: string | number | null;
 }
+
+const USER_COLUMNS =
+  'id, email, password_hash, role, created_at, mfa_status, mfa_secret_encrypted, mfa_last_used_step';
 
 interface NewUser {
   id: string;
@@ -53,7 +60,7 @@ export class UsersRepository {
       this.tenantContext.getTenant().schemaName,
     );
     const result: QueryResult<UserRow> = await client.query(
-      `SELECT id, email, password_hash, role, created_at FROM ${schema}.users WHERE email = $1 LIMIT 1`,
+      `SELECT ${USER_COLUMNS} FROM ${schema}.users WHERE email = $1 LIMIT 1`,
       [email],
     );
     const row = result.rows[0];
@@ -66,7 +73,7 @@ export class UsersRepository {
       this.tenantContext.getTenant().schemaName,
     );
     const result: QueryResult<UserRow> = await client.query(
-      `SELECT id, email, password_hash, role, created_at FROM ${schema}.users WHERE id = $1 LIMIT 1`,
+      `SELECT ${USER_COLUMNS} FROM ${schema}.users WHERE id = $1 LIMIT 1`,
       [id],
     );
     const row = result.rows[0];
@@ -82,7 +89,7 @@ export class UsersRepository {
       const result: QueryResult<UserRow> = await client.query(
         `INSERT INTO ${schema}.users (id, email, password_hash, role)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, email, password_hash, role, created_at`,
+         RETURNING ${USER_COLUMNS}`,
         [user.id, user.email, user.passwordHash, user.role],
       );
       return this.toEntity(result.rows[0]);
@@ -94,6 +101,78 @@ export class UsersRepository {
     }
   }
 
+  /**
+   * AC1: begins (or restarts) MFA enrollment -- stores the newly generated,
+   * encrypted secret and sets status to `pending`. Resets any prior
+   * `mfa_last_used_step` because a fresh secret starts a fresh replay-window
+   * timeline; re-enrolling (e.g. the user lost the QR code before verifying,
+   * or is deliberately restarting) always overwrites whatever was pending
+   * before -- no separate confirmation step is specified by this ticket.
+   */
+  async startMfaEnrollment(
+    userId: string,
+    encryptedSecret: string,
+  ): Promise<void> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    await client.query(
+      `UPDATE ${schema}.users
+       SET mfa_status = 'pending', mfa_secret_encrypted = $2, mfa_last_used_step = NULL
+       WHERE id = $1`,
+      [userId, encryptedSecret],
+    );
+  }
+
+  /**
+   * AC2: transitions `pending` -> `active` and records the time-step the
+   * activating code matched, in a single atomic UPDATE guarded by
+   * `mfa_status = 'pending'` so this only ever succeeds once per
+   * enrollment. Returns `false` (no row updated) if the user was not in
+   * `pending` state -- callers must treat that as a failure, not silently
+   * activate an already-active or never-enrolled user.
+   */
+  async activateMfa(userId: string, initialStep: number): Promise<boolean> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    const result = await client.query(
+      `UPDATE ${schema}.users
+       SET mfa_status = 'active', mfa_last_used_step = $2
+       WHERE id = $1 AND mfa_status = 'pending'`,
+      [userId, initialStep],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * AC4's replay-prevention floor, enforced atomically: only records `step`
+   * (and reports success) if the user is `active` AND `step` is strictly
+   * greater than whatever is currently stored (or nothing is stored yet).
+   * The `WHERE` clause is re-evaluated by Postgres against the latest
+   * committed row for every concurrent UPDATE targeting the same row, so of
+   * two concurrent requests presenting the *same* code (same `step`), only
+   * the first to commit can ever satisfy `mfa_last_used_step < $2` --
+   * the second always updates zero rows and must be treated as rejected.
+   */
+  async recordMfaStepIfNewer(userId: string, step: number): Promise<boolean> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    const result = await client.query(
+      `UPDATE ${schema}.users
+       SET mfa_last_used_step = $2
+       WHERE id = $1
+         AND mfa_status = 'active'
+         AND (mfa_last_used_step IS NULL OR mfa_last_used_step < $2)`,
+      [userId, step],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   private toEntity(row: UserRow): User {
     return {
       id: row.id,
@@ -101,6 +180,10 @@ export class UsersRepository {
       passwordHash: row.password_hash,
       role: row.role as UserRole,
       createdAt: row.created_at,
+      mfaStatus: row.mfa_status as MfaStatus,
+      mfaSecretEncrypted: row.mfa_secret_encrypted,
+      mfaLastUsedStep:
+        row.mfa_last_used_step === null ? null : Number(row.mfa_last_used_step),
     };
   }
 }

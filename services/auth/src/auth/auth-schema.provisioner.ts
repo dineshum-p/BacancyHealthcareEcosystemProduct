@@ -52,8 +52,26 @@ export class AuthSchemaProvisioner {
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        mfa_status TEXT NOT NULL DEFAULT 'none',
+        mfa_secret_encrypted TEXT NULL,
+        mfa_last_used_step BIGINT NULL,
         UNIQUE (email)
       )`,
+    );
+    // Defensive migration (BAC-6) for a schema that was already provisioned
+    // by an older version of this service, before the MFA columns existed:
+    // `CREATE TABLE` above no-ops via `isTableAlreadyExistsError` in that
+    // case, so backfill the columns explicitly. `pg-mem` and real Postgres
+    // both support `ADD COLUMN IF NOT EXISTS`, so this is a cheap no-op for
+    // freshly-created tables too.
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS mfa_status TEXT NOT NULL DEFAULT 'none'`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS mfa_secret_encrypted TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS mfa_last_used_step BIGINT NULL`,
     );
 
     await this.createTableIfMissing(
@@ -65,6 +83,19 @@ export class AuthSchemaProvisioner {
         revoked BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE (token_hash)
+      )`,
+    );
+
+    // BAC-6: recovery-code hashes, never the raw codes (see
+    // `recovery-code.util.ts`). No redemption endpoint exists yet (deliberate
+    // scope call -- see BAC-6 report), so rows are write-only for now.
+    await this.createTableIfMissing(
+      `CREATE TABLE ${schema}.mfa_recovery_codes (
+        id UUID PRIMARY KEY,
+        user_id UUID NOT NULL,
+        code_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (code_hash)
       )`,
     );
 
