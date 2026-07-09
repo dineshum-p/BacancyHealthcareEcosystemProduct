@@ -1,11 +1,28 @@
 export type TenantId = string;
 
 /**
- * Roles a user can hold within a tenant (BAC-5). No role-assignment flow is
- * specified yet -- every user registered via `POST /auth/register` gets
- * `member` by default. Extend this union as role-management ships.
+ * Roles a user can hold within a tenant (BAC-7; replaces BAC-5's single
+ * placeholder value `'member'`). Registration default (`POST /auth/register`)
+ * is `'staff'` -- the least-privileged role -- EXCEPT for the very first
+ * user registered for a given tenant, who is automatically assigned
+ * `'super_admin'` (the bootstrap-admin resolution; see `services/auth`'s
+ * `AuthService.register`). There is no separate seeding/admin-invite flow.
  */
-export type UserRole = 'member';
+export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
+
+/**
+ * Permissions checked by `services/auth`'s `PermissionsGuard` against the
+ * caller's `role` claim (BAC-7). Deliberately minimal -- see
+ * `services/auth`'s `permission.enum.ts` for why this is not a larger,
+ * speculative catalog.
+ */
+export type Permission = 'manage_user_roles' | 'view_users';
+
+/** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
+export interface RoleDefinition {
+  role: UserRole;
+  permissions: Permission[];
+}
 
 /**
  * Claims signed into every access-token JWT issued by `services/auth`

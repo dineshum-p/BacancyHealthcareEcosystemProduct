@@ -70,14 +70,14 @@ describe('UsersRepository', () => {
       id,
       email: 'ada@example.com',
       passwordHash: 'argon2-hash',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     expect(created).toMatchObject({
       id,
       email: 'ada@example.com',
       passwordHash: 'argon2-hash',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
       mfaStatus: MfaStatus.NONE,
       mfaSecretEncrypted: null,
       mfaLastUsedStep: null,
@@ -93,7 +93,7 @@ describe('UsersRepository', () => {
       id: randomUUID(),
       email: 'ada@example.com',
       passwordHash: 'argon2-hash',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     await expect(repository.findById(created.id)).resolves.toEqual(created);
@@ -110,7 +110,7 @@ describe('UsersRepository', () => {
       id: randomUUID(),
       email: 'ada@example.com',
       passwordHash: 'argon2-hash',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     await expect(
@@ -118,9 +118,74 @@ describe('UsersRepository', () => {
         id: randomUUID(),
         email: 'ada@example.com',
         passwordHash: 'another-hash',
-        role: UserRole.MEMBER,
+        role: UserRole.STAFF,
       }),
     ).rejects.toBeInstanceOf(EmailAlreadyExistsError);
+  });
+
+  describe('count (BAC-7 bootstrap-admin check)', () => {
+    it('returns 0 for a tenant schema with no users yet', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+      await expect(repository.count()).resolves.toBe(0);
+    });
+
+    it('returns the number of users created for this tenant', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+      await repository.create({
+        id: randomUUID(),
+        email: 'ada@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.SUPER_ADMIN,
+      });
+      await repository.create({
+        id: randomUUID(),
+        email: 'grace@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.STAFF,
+      });
+
+      await expect(repository.count()).resolves.toBe(2);
+    });
+  });
+
+  describe('updateRole (BAC-7, AC4)', () => {
+    it('persists a new role and returns the updated user', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'ada@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.STAFF,
+      });
+
+      const updated = await repository.updateRole(
+        created.id,
+        UserRole.CLINIC_ADMIN,
+      );
+
+      expect(updated).toMatchObject({
+        id: created.id,
+        role: UserRole.CLINIC_ADMIN,
+      });
+      const found = await repository.findById(created.id);
+      expect(found?.role).toBe(UserRole.CLINIC_ADMIN);
+    });
+
+    it('returns null when the user id does not exist in this tenant', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      await expect(
+        repository.updateRole(randomUUID(), UserRole.PROVIDER),
+      ).resolves.toBeNull();
+    });
   });
 
   describe('MFA (BAC-6)', () => {
@@ -129,7 +194,7 @@ describe('UsersRepository', () => {
         id: randomUUID(),
         email: 'ada@example.com',
         passwordHash: 'argon2-hash',
-        role: UserRole.MEMBER,
+        role: UserRole.STAFF,
       });
     }
 

@@ -9,6 +9,7 @@ import { RefreshTokensRepository } from './refresh-tokens.repository';
 import { MfaRecoveryCodesRepository } from './mfa-recovery-codes.repository';
 import { AccessTokenService } from './access-token.service';
 import { AccessTokenGuard } from './access-token.guard';
+import { PermissionsGuard } from './permissions.guard';
 import { MfaChallengeTokenService } from './mfa-challenge-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 
@@ -18,8 +19,8 @@ import { AuthSchemaProvisioner } from './auth-schema.provisioner';
   // `ItemsModule` does: `@UseGuards(TenantGuard)` makes Nest instantiate
   // `TenantGuard` using THIS module's own injector, so its constructor
   // dependency (`TenantsRepository`) must be visible here too. Likewise for
-  // `AccessTokenGuard` (BAC-6), used via `@UseGuards(AccessTokenGuard)` on
-  // the MFA-enrollment routes.
+  // `AccessTokenGuard` (BAC-6) and `PermissionsGuard` (BAC-7), used via
+  // `@UseGuards(...)` on the MFA-enrollment and role-assignment routes.
   imports: [TenantContextModule, TenantsModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [
@@ -29,6 +30,7 @@ import { AuthSchemaProvisioner } from './auth-schema.provisioner';
     MfaRecoveryCodesRepository,
     AccessTokenService,
     AccessTokenGuard,
+    PermissionsGuard,
     MfaChallengeTokenService,
     AuthSchemaProvisioner,
   ],

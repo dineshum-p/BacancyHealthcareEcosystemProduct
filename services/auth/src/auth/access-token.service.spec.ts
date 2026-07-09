@@ -17,7 +17,7 @@ describe('AccessTokenService', () => {
     const { token, expiresIn } = service.sign({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     expect(expiresIn).toBe(900);
@@ -25,7 +25,7 @@ describe('AccessTokenService', () => {
     expect(decoded).toMatchObject({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
   });
 
@@ -35,7 +35,7 @@ describe('AccessTokenService', () => {
     const { token } = service.sign({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     process.env.JWT_ACCESS_SECRET = 'secret-b';
@@ -57,7 +57,7 @@ describe('AccessTokenService', () => {
     const forgedToken = `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({
       userId: 'attacker',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     })}.`;
 
     expect(() => service.verify(forgedToken)).toThrow();
@@ -70,7 +70,7 @@ describe('AccessTokenService', () => {
     const { token } = service.sign({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     await new Promise((resolve) => setTimeout(resolve, 1100));

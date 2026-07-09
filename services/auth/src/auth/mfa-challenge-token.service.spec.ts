@@ -58,7 +58,7 @@ describe('MfaChallengeTokenService', () => {
     const { token: accessToken } = accessTokenService.sign({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
 
     expect(() => challengeService.verify(accessToken)).toThrow();
