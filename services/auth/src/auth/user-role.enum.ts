@@ -4,12 +4,13 @@
  * implemented.
  *
  * Registration default (`POST /auth/register`, see `AuthService.register`):
- * `STAFF` -- the least-privileged role -- for every registration EXCEPT the
- * very first one for a given tenant, which is automatically assigned
- * `SUPER_ADMIN` (see the bootstrap-admin doc comment on `AuthService.
- * register`). There is deliberately no separate seeding/admin-invite flow;
- * this is the one, minimal way a tenant ever gets its first administrator
- * through the public API.
+ * `STAFF` -- the least-privileged role -- for every registration EXCEPT one
+ * whose (case-insensitively normalized) email exactly matches the tenant's
+ * `ownerEmail` (set once, at tenant-creation time in `services/tenant`),
+ * which is automatically assigned `SUPER_ADMIN` (see the bootstrap-admin
+ * doc comment on `AuthService.register`). There is deliberately no separate
+ * seeding/admin-invite flow; this is the one, minimal way a tenant ever
+ * gets its first administrator through the public API.
  *
  * Mirrors the `UserRole` union exported from `@hep/shared-types`.
  */
