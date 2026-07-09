@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "node .claude/hooks/post-commit-gate.mjs" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "node .claude/hooks/pre-merge-guard.mjs" } ] }
+    ]
+  }
+}

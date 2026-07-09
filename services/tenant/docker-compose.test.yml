@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tenant_service
+      POSTGRES_PASSWORD: tenant_service
+      POSTGRES_DB: tenant_service
+    ports:
+      - '5544:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tenant_service']
+      interval: 2s
+      timeout: 2s
+      retries: 20

@@ -1,0 +1,143 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { Pool } from 'pg';
+import request from 'supertest';
+import { App } from 'supertest/types';
+import { AppModule } from '../src/app.module';
+import { PG_POOL } from '../src/database/database.tokens';
+import { TenantsRepository } from '../src/tenants/tenants.repository';
+import { TenantStatus } from '../src/tenants/tenant-status.enum';
+import {
+  createInMemoryPool,
+  createTenantsTable,
+} from './support/create-in-memory-pool';
+import type { Tenant } from '../src/tenants/tenant.entity';
+
+/**
+ * Proves BAC-3's acceptance criteria end-to-end against a real (not mocked)
+ * SQL engine, the same `pg-mem` approach BAC-4 established (see
+ * `tenant-isolation.e2e-spec.ts`): production and `docker-compose.test.yml`
+ * both use the real `pg` driver against real Postgres; only the `PG_POOL`
+ * provider is swapped here.
+ */
+describe('Tenant provisioning (e2e)', () => {
+  let app: INestApplication<App>;
+  let pool: Pool;
+
+  beforeAll(async () => {
+    pool = createInMemoryPool();
+    await createTenantsTable(pool);
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(PG_POOL)
+      .useValue(pool)
+      .compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('provisions a tenant with a real, queryable Postgres schema (AC1, AC2)', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'Acme Inc', slug: 'acme-corp', plan: 'starter' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      slug: 'acme-corp',
+      name: 'Acme Inc',
+      plan: 'starter',
+      status: 'active',
+      schemaName: 'tenant_acme_corp',
+    });
+    const createdTenant = response.body as Tenant;
+    expect(typeof createdTenant.id).toBe('string');
+    expect(createdTenant.id.length).toBeGreaterThan(0);
+
+    // AC2: the dedicated schema (+ baseline "items" table) really exists
+    // and is queryable, not just recorded in the registry row.
+    await pool.query(
+      'INSERT INTO "tenant_acme_corp".items (name) VALUES ($1)',
+      ['seed'],
+    );
+    const items = await pool.query('SELECT name FROM "tenant_acme_corp".items');
+    expect(items.rows).toEqual([{ name: 'seed' }]);
+  });
+
+  it('rejects a duplicate slug with 409 (AC3)', async () => {
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'First Co', slug: 'dup-tenant', plan: 'starter' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'Second Co', slug: 'dup-tenant', plan: 'pro' })
+      .expect(409);
+  });
+
+  it('returns 404 for an unknown tenant id', async () => {
+    await request(app.getHttpServer())
+      .get('/tenants/does-not-exist')
+      .expect(404);
+  });
+
+  it('returns the created tenant with its active status by id (AC4)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'Gamma LLC', slug: 'gamma-llc', plan: 'starter' })
+      .expect(201);
+    const createdTenant = created.body as Tenant;
+
+    const fetched = await request(app.getHttpServer())
+      .get(`/tenants/${createdTenant.id}`)
+      .expect(200);
+
+    expect(fetched.body).toMatchObject({
+      id: createdTenant.id,
+      slug: 'gamma-llc',
+      status: 'active',
+    });
+  });
+
+  it('reflects the pending -> active provisioning status transition on GET (AC4)', async () => {
+    // Drives the registry directly (same production TenantsRepository code
+    // path the app uses) to observe the intermediate `pending` state that a
+    // real deployment's provisioning step passes through, independent of
+    // this test app's synchronous create-then-provision timing.
+    const tenantsRepository = new TenantsRepository(pool);
+    const pending = await tenantsRepository.create({
+      id: 'transition-tenant',
+      slug: 'transition-tenant',
+      name: 'Transition Co',
+      plan: 'starter',
+      status: TenantStatus.PENDING,
+      schemaName: 'tenant_transition',
+    });
+
+    const whilePending = await request(app.getHttpServer())
+      .get(`/tenants/${pending.id}`)
+      .expect(200);
+    expect(whilePending.body).toMatchObject({ status: 'pending' });
+
+    await tenantsRepository.updateStatus(pending.id, TenantStatus.ACTIVE);
+
+    const afterActivation = await request(app.getHttpServer())
+      .get(`/tenants/${pending.id}`)
+      .expect(200);
+    expect(afterActivation.body).toMatchObject({ status: 'active' });
+  });
+});

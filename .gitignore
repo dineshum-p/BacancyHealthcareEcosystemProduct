@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+# Pipeline runtime state is machine-generated; don't commit it
+.claude/state/
