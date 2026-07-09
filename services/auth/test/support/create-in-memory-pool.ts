@@ -24,7 +24,9 @@ export function createInMemoryPool(): Pool {
 
 /**
  * Bootstraps a `public.tenants` registry table shaped like `services/tenant`'s
- * migration (the minimum columns this service's `TenantsRepository` reads).
+ * migration (the minimum columns this service's `TenantsRepository` reads),
+ * including the BAC-7 `1752105600000_add-tenant-owner-email` follow-up: the
+ * nullable `owner_email` column.
  */
 export async function createTenantsTable(pool: Pool): Promise<void> {
   await pool.query(`
@@ -35,6 +37,7 @@ export async function createTenantsTable(pool: Pool): Promise<void> {
       schema_name TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT '',
       plan TEXT NOT NULL DEFAULT '',
+      owner_email TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);

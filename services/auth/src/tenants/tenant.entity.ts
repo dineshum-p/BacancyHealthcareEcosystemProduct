@@ -13,4 +13,12 @@ export interface Tenant {
   plan: string;
   status: TenantStatus;
   schemaName: string;
+  /**
+   * BAC-7: the single email address permitted to bootstrap this tenant's
+   * `super_admin` (see `AuthService.register`'s doc comment). `null` for
+   * tenants that predate this column (`services/tenant`'s
+   * `1752105600000_add-tenant-owner-email` migration) -- such a tenant
+   * simply has no bootstrap-eligible owner going forward.
+   */
+  ownerEmail: string | null;
 }

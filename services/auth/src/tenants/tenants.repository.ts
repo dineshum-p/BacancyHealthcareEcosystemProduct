@@ -11,6 +11,7 @@ interface TenantRow {
   schema_name: string;
   name: string;
   plan: string;
+  owner_email: string | null;
 }
 
 /**
@@ -30,7 +31,7 @@ export class TenantsRepository {
    */
   async findByIdentifier(identifier: string): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
-      'SELECT id, slug, status, schema_name, name, plan FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1',
+      'SELECT id, slug, status, schema_name, name, plan, owner_email FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1',
       [identifier],
     );
     const row = result.rows[0];
@@ -45,6 +46,7 @@ export class TenantsRepository {
       plan: row.plan,
       status: row.status as TenantStatus,
       schemaName: row.schema_name,
+      ownerEmail: row.owner_email,
     };
   }
 }
