@@ -1,8 +1,11 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import type { AuthTokens, MfaChallenge } from '@hep/shared-types';
 import { AuthService } from './auth.service';
 import { UsersRepository } from './users.repository';
 import { RefreshTokensRepository } from './refresh-tokens.repository';
+import { MfaRecoveryCodesRepository } from './mfa-recovery-codes.repository';
 import { AccessTokenService } from './access-token.service';
+import { MfaChallengeTokenService } from './mfa-challenge-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { TenantStatus } from '../tenants/tenant-status.enum';
@@ -12,9 +15,13 @@ import { MfaStatus } from './mfa-status.enum';
 import { User } from './user.entity';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
 import { hashPassword } from './password-hasher.util';
+import { encryptTotpSecret } from './totp-secret-cipher.util';
+import { currentTotpStep, generateTotpSecret } from './totp.util';
+import { hashRecoveryCode } from './recovery-code.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { MfaVerifyDto } from './dto/mfa-verify.dto';
 
 /** BAC-6: default-MFA-off user literal, so BAC-5 tests don't need to know about MFA fields individually. */
 function makeUser(overrides: Partial<User> = {}): User {
@@ -34,7 +41,9 @@ function makeUser(overrides: Partial<User> = {}): User {
 describe('AuthService', () => {
   let usersRepository: jest.Mocked<UsersRepository>;
   let refreshTokensRepository: jest.Mocked<RefreshTokensRepository>;
+  let mfaRecoveryCodesRepository: jest.Mocked<MfaRecoveryCodesRepository>;
   let accessTokenService: jest.Mocked<AccessTokenService>;
+  let mfaChallengeTokenService: jest.Mocked<MfaChallengeTokenService>;
   let authSchemaProvisioner: jest.Mocked<AuthSchemaProvisioner>;
   let tenantContext: jest.Mocked<TenantContextService>;
   let service: AuthService;
@@ -53,18 +62,28 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
+      startMfaEnrollment: jest.fn().mockResolvedValue(undefined),
+      activateMfa: jest.fn(),
+      recordMfaStepIfNewer: jest.fn(),
     } as unknown as jest.Mocked<UsersRepository>;
     refreshTokensRepository = {
       create: jest.fn(),
       findByTokenHash: jest.fn(),
       revoke: jest.fn(),
     } as unknown as jest.Mocked<RefreshTokensRepository>;
+    mfaRecoveryCodesRepository = {
+      replaceAll: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<MfaRecoveryCodesRepository>;
     accessTokenService = {
       sign: jest
         .fn()
         .mockReturnValue({ token: 'signed.jwt.token', expiresIn: 900 }),
       verify: jest.fn(),
     } as unknown as jest.Mocked<AccessTokenService>;
+    mfaChallengeTokenService = {
+      sign: jest.fn().mockReturnValue('challenge.jwt.token'),
+      verify: jest.fn(),
+    } as unknown as jest.Mocked<MfaChallengeTokenService>;
     authSchemaProvisioner = {
       ensureProvisioned: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<AuthSchemaProvisioner>;
@@ -75,7 +94,9 @@ describe('AuthService', () => {
     service = new AuthService(
       usersRepository,
       refreshTokensRepository,
+      mfaRecoveryCodesRepository,
       accessTokenService,
+      mfaChallengeTokenService,
       authSchemaProvisioner,
       tenantContext,
     );
@@ -170,7 +191,7 @@ describe('AuthService', () => {
         Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
       );
 
-      const result = await service.login(dto);
+      const result = (await service.login(dto)) as AuthTokens;
 
       expect(result.accessToken).toBe('signed.jwt.token');
       expect(result.expiresIn).toBe(900);
@@ -191,7 +212,7 @@ describe('AuthService', () => {
         Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
       );
 
-      const result = await service.login(dto);
+      const result = (await service.login(dto)) as AuthTokens;
 
       const [createArg] = refreshTokensRepository.create.mock.calls[0];
       expect(createArg.tokenHash).not.toBe(result.refreshToken);
@@ -337,6 +358,292 @@ describe('AuthService', () => {
       await expect(service.refresh(dto)).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('enrollMfa (AC1)', () => {
+    it('generates a secret, returns an otpauth:// URI, and marks MFA pending (not active)', async () => {
+      usersRepository.findById.mockResolvedValue(makeUser());
+
+      const result = await service.enrollMfa('user-1');
+
+      expect(typeof result.secret).toBe('string');
+      expect(result.secret.length).toBeGreaterThan(0);
+      expect(result.otpauthUrl.startsWith('otpauth://totp/')).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.startMfaEnrollment).toHaveBeenCalledWith(
+        'user-1',
+        expect.any(String),
+      );
+      const [, storedEncryptedSecret] =
+        usersRepository.startMfaEnrollment.mock.calls[0];
+      expect(storedEncryptedSecret).not.toBe(result.secret);
+      expect(storedEncryptedSecret).not.toContain(result.secret);
+    });
+
+    it('throws UnauthorizedException when the authenticated user no longer exists', async () => {
+      usersRepository.findById.mockResolvedValue(null);
+
+      await expect(service.enrollMfa('ghost-user')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.startMfaEnrollment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyMfaEnrollment (AC2)', () => {
+    function makePendingUser(): { user: User; secret: string } {
+      const secret = generateTotpSecret();
+      const user = makeUser({
+        mfaStatus: MfaStatus.PENDING,
+        mfaSecretEncrypted: encryptTotpSecret(secret),
+        mfaLastUsedStep: null,
+      });
+      return { user, secret };
+    }
+
+    it('activates MFA and returns recovery codes for a valid code against the pending secret', async () => {
+      const { user, secret } = makePendingUser();
+      usersRepository.findById.mockResolvedValue(user);
+      usersRepository.activateMfa.mockResolvedValue(true);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- generating a real code for the pending secret
+      const { authenticator } = require('otplib') as typeof import('otplib');
+      const dto: MfaVerifyDto = { totpCode: authenticator.generate(secret) };
+
+      const result = await service.verifyMfaEnrollment('user-1', dto);
+
+      expect(result.recoveryCodes).toHaveLength(10);
+      expect(new Set(result.recoveryCodes).size).toBe(10);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.activateMfa).toHaveBeenCalledWith(
+        'user-1',
+        currentTotpStep(),
+      );
+    });
+
+    it('persists only hashes of the recovery codes, never the raw codes', async () => {
+      const { user, secret } = makePendingUser();
+      usersRepository.findById.mockResolvedValue(user);
+      usersRepository.activateMfa.mockResolvedValue(true);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { authenticator } = require('otplib') as typeof import('otplib');
+      const dto: MfaVerifyDto = { totpCode: authenticator.generate(secret) };
+
+      const result = await service.verifyMfaEnrollment('user-1', dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(mfaRecoveryCodesRepository.replaceAll).toHaveBeenCalledWith(
+        'user-1',
+        result.recoveryCodes.map(hashRecoveryCode),
+      );
+      const [, persistedHashes] =
+        mfaRecoveryCodesRepository.replaceAll.mock.calls[0];
+      for (const rawCode of result.recoveryCodes) {
+        expect(persistedHashes).not.toContain(rawCode);
+      }
+    });
+
+    it('rejects an invalid code with 401 and does not activate MFA (AC4-style)', async () => {
+      const { user } = makePendingUser();
+      usersRepository.findById.mockResolvedValue(user);
+
+      await expect(
+        service.verifyMfaEnrollment('user-1', { totpCode: '000000' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.activateMfa).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(mfaRecoveryCodesRepository.replaceAll).not.toHaveBeenCalled();
+    });
+
+    it('rejects with ConflictException when there is no pending enrollment (status none)', async () => {
+      usersRepository.findById.mockResolvedValue(makeUser());
+
+      await expect(
+        service.verifyMfaEnrollment('user-1', { totpCode: '123456' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects with ConflictException when MFA is already active', async () => {
+      usersRepository.findById.mockResolvedValue(
+        makeUser({ mfaStatus: MfaStatus.ACTIVE }),
+      );
+
+      await expect(
+        service.verifyMfaEnrollment('user-1', { totpCode: '123456' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('login when MFA is active (AC3)', () => {
+    const dto: LoginDto = {
+      email: 'Ada@Example.com',
+      password: 'correct-password',
+    };
+
+    it('returns an mfa_required challenge instead of tokens for valid credentials', async () => {
+      const passwordHash = await hashPassword('correct-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mfaStatus: MfaStatus.ACTIVE }),
+      );
+
+      const result = (await service.login(dto)) as MfaChallenge;
+
+      expect(result).toEqual({
+        mfaRequired: true,
+        mfaChallengeToken: 'challenge.jwt.token',
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(mfaChallengeTokenService.sign).toHaveBeenCalledWith(
+        'user-1',
+        'tenant-1',
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(refreshTokensRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('still rejects a wrong password with the uniform 401, never reaching the MFA branch', async () => {
+      const passwordHash = await hashPassword('correct-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mfaStatus: MfaStatus.ACTIVE }),
+      );
+
+      await expect(
+        service.login({ ...dto, password: 'wrong-password' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(mfaChallengeTokenService.sign).not.toHaveBeenCalled();
+    });
+
+    it('does NOT challenge (issues tokens directly) when MFA is only pending, not active', async () => {
+      const passwordHash = await hashPassword('correct-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mfaStatus: MfaStatus.PENDING }),
+      );
+      refreshTokensRepository.create.mockImplementation((entry) =>
+        Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
+      );
+
+      const result = await service.login(dto);
+
+      expect(result).toHaveProperty('accessToken');
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(mfaChallengeTokenService.sign).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('completeMfaLogin (AC3 + AC4)', () => {
+    const challengeDto = {
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      purpose: 'mfa-challenge' as const,
+    };
+
+    function makeActiveUser(): { user: User; secret: string } {
+      const secret = generateTotpSecret();
+      const user = makeUser({
+        mfaStatus: MfaStatus.ACTIVE,
+        mfaSecretEncrypted: encryptTotpSecret(secret),
+        mfaLastUsedStep: currentTotpStep() - 10,
+      });
+      return { user, secret };
+    }
+
+    function validCodeFor(secret: string): string {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { authenticator } = require('otplib') as typeof import('otplib');
+      return authenticator.generate(secret);
+    }
+
+    it('exchanges a valid challenge token + correct TOTP code for real tokens (AC3)', async () => {
+      const { user, secret } = makeActiveUser();
+      mfaChallengeTokenService.verify.mockReturnValue(challengeDto);
+      usersRepository.findById.mockResolvedValue(user);
+      usersRepository.recordMfaStepIfNewer.mockResolvedValue(true);
+      refreshTokensRepository.create.mockImplementation((entry) =>
+        Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
+      );
+
+      const result = await service.completeMfaLogin({
+        mfaChallengeToken: 'challenge.jwt.token',
+        totpCode: validCodeFor(secret),
+      });
+
+      expect(result.accessToken).toBe('signed.jwt.token');
+      expect(typeof result.refreshToken).toBe('string');
+    });
+
+    it('rejects an invalid TOTP code with 401 and issues no tokens (AC4)', async () => {
+      const { user } = makeActiveUser();
+      mfaChallengeTokenService.verify.mockReturnValue(challengeDto);
+      usersRepository.findById.mockResolvedValue(user);
+
+      await expect(
+        service.completeMfaLogin({
+          mfaChallengeToken: 'challenge.jwt.token',
+          totpCode: '000000',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(refreshTokensRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a reused TOTP code with 401 (AC4 replay prevention)', async () => {
+      const { user, secret } = makeActiveUser();
+      mfaChallengeTokenService.verify.mockReturnValue(challengeDto);
+      usersRepository.findById.mockResolvedValue(user);
+      usersRepository.recordMfaStepIfNewer.mockResolvedValue(false);
+
+      await expect(
+        service.completeMfaLogin({
+          mfaChallengeToken: 'challenge.jwt.token',
+          totpCode: validCodeFor(secret),
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(refreshTokensRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid/garbage challenge token with 401', async () => {
+      mfaChallengeTokenService.verify.mockImplementation(() => {
+        throw new Error('bad token');
+      });
+
+      await expect(
+        service.completeMfaLogin({
+          mfaChallengeToken: 'garbage',
+          totpCode: '123456',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('rejects a challenge token minted for a different tenant with 401', async () => {
+      mfaChallengeTokenService.verify.mockReturnValue({
+        ...challengeDto,
+        tenantId: 'a-different-tenant',
+      });
+
+      await expect(
+        service.completeMfaLogin({
+          mfaChallengeToken: 'challenge.jwt.token',
+          totpCode: '123456',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 401 when the referenced user is no longer MFA-active', async () => {
+      mfaChallengeTokenService.verify.mockReturnValue(challengeDto);
+      usersRepository.findById.mockResolvedValue(makeUser());
+
+      await expect(
+        service.completeMfaLogin({
+          mfaChallengeToken: 'challenge.jwt.token',
+          totpCode: '123456',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 });
