@@ -116,10 +116,12 @@ describe('Audit logs (e2e)', () => {
     expect(typeof page.items[0].createdAt).toBe('string');
   });
 
-  it('records POST /items as an audit entry with before=null and after=<created item> (AC1)', async () => {
+  it('records POST /items as an audit entry with a real actorUserId, before=null and after=<created item> (AC1)', async () => {
+    const creatorToken = superAdminTokenFor(tenants.tenantA);
     const itemResponse = await request(app.getHttpServer())
       .post('/items')
       .set('X-Tenant-Id', tenants.tenantA.slug)
+      .set('Authorization', `Bearer ${creatorToken}`)
       .send({ name: 'audited widget' })
       .expect(201);
     const createdItem = itemResponse.body as { id: number; name: string };
@@ -135,13 +137,21 @@ describe('Audit logs (e2e)', () => {
 
     expect(page.items).toHaveLength(1);
     expect(page.items[0]).toMatchObject({
-      actorUserId: null,
+      actorUserId: 'super-admin-1',
       action: 'create',
       resourceType: 'item',
       resourceId: String(createdItem.id),
       before: null,
       after: { id: createdItem.id, name: 'audited widget' },
     });
+  });
+
+  it('POST /items requires authentication (401 with no Bearer token) (AC1, AC7)', async () => {
+    await request(app.getHttpServer())
+      .post('/items')
+      .set('X-Tenant-Id', tenants.tenantA.slug)
+      .send({ name: 'unauthenticated widget' })
+      .expect(401);
   });
 
   it('GET /audit-logs requires authentication (401 with no Bearer token) (AC7)', async () => {
@@ -193,11 +203,13 @@ describe('Audit logs (e2e)', () => {
     await request(app.getHttpServer())
       .post('/items')
       .set('X-Tenant-Id', tenants.tenantA.slug)
+      .set('Authorization', `Bearer ${superAdminTokenFor(tenants.tenantA)}`)
       .send({ name: 'only-in-tenant-a-audit' })
       .expect(201);
     await request(app.getHttpServer())
       .post('/items')
       .set('X-Tenant-Id', tenants.tenantB.slug)
+      .set('Authorization', `Bearer ${superAdminTokenFor(tenants.tenantB)}`)
       .send({ name: 'only-in-tenant-b-audit' })
       .expect(201);
 
@@ -245,16 +257,17 @@ describe('Audit logs (e2e)', () => {
       })
       .expect(201);
     const paginationTenant = uniqueTenant.body as Tenant;
+    const token = superAdminTokenFor(paginationTenant);
 
     for (let i = 0; i < 3; i += 1) {
       await request(app.getHttpServer())
         .post('/items')
         .set('X-Tenant-Id', paginationTenant.slug)
+        .set('Authorization', `Bearer ${token}`)
         .send({ name: `item-${i}` })
         .expect(201);
     }
 
-    const token = superAdminTokenFor(paginationTenant);
     const page1 = await request(app.getHttpServer())
       .get('/audit-logs')
       .set('X-Tenant-Id', paginationTenant.slug)

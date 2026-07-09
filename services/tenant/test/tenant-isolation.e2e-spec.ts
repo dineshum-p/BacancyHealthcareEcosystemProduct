@@ -1,8 +1,10 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import { Pool } from 'pg';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import type { AccessTokenPayload } from '@hep/shared-types';
 import { AppModule } from '../src/app.module';
 import { PG_POOL } from '../src/database/database.tokens';
 import type { Item } from '../src/items/item.entity';
@@ -11,6 +13,8 @@ import {
   createTenantsTable,
 } from './support/create-in-memory-pool';
 import { seedTestTenants, SeededTenants } from './support/tenant-fixtures';
+
+const JWT_ACCESS_SECRET = 'e2e-tenant-isolation-test-secret';
 
 /**
  * Proves BAC-4's acceptance criteria end-to-end against a real (not mocked)
@@ -28,11 +32,15 @@ describe('Tenant isolation (e2e)', () => {
   let app: INestApplication<App>;
   let pool: Pool;
   let tenants: SeededTenants;
+  let jwtService: JwtService;
 
   beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET = JWT_ACCESS_SECRET;
+
     pool = createInMemoryPool();
     await createTenantsTable(pool);
     tenants = await seedTestTenants(pool);
+    jwtService = new JwtService();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -55,6 +63,26 @@ describe('Tenant isolation (e2e)', () => {
   afterAll(async () => {
     await app.close();
   });
+
+  /**
+   * `POST /items` requires an access token as of BAC-8's review fix (actor
+   * capture, AC1). This suite doesn't care about the audit trail itself, only
+   * tenant isolation, but it must supply a token matching the tenant it's
+   * writing under -- `AccessTokenGuard` cross-checks the token's `tenantId`
+   * claim against the resolved `X-Tenant-Id`.
+   */
+  function tokenFor(tenant: { id: string }): string {
+    const payload: AccessTokenPayload = {
+      userId: 'isolation-test-user',
+      tenantId: tenant.id,
+      role: 'staff',
+    };
+    return jwtService.sign(payload, {
+      secret: JWT_ACCESS_SECRET,
+      algorithm: 'HS256',
+      expiresIn: 900,
+    });
+  }
 
   it('resolves the correct tenant from X-Tenant-Id (AC1, AC4)', async () => {
     const response = await request(app.getHttpServer())
@@ -123,6 +151,7 @@ describe('Tenant isolation (e2e)', () => {
     await request(app.getHttpServer())
       .post('/items')
       .set('X-Tenant-Id', tenants.tenantA.slug)
+      .set('Authorization', `Bearer ${tokenFor(tenants.tenantA)}`)
       .send({ name: 'only-in-tenant-a' })
       .expect(201);
 
