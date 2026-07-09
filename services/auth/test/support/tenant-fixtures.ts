@@ -9,6 +9,14 @@ export interface SeededTenants {
   tenantA: Tenant;
   tenantB: Tenant;
   inactiveTenant: Tenant;
+  /**
+   * A tenant used exclusively by BAC-7's RBAC e2e tests, so their
+   * bootstrap-admin assertions (which depend on being the FIRST-EVER
+   * registration against a tenant's schema) are self-contained and don't
+   * depend on execution order relative to `tenantA`/`tenantB`'s other uses
+   * elsewhere in the same spec file.
+   */
+  rbacTenant: Tenant;
 }
 
 /**
@@ -38,6 +46,11 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
     schemaName: 'tenant_inactive',
     status: TenantStatus.INACTIVE,
   });
+  const rbacTenant = await insertTenant(pool, tenantsRepository, {
+    slug: 'tenant-rbac',
+    schemaName: 'tenant_rbac',
+    status: TenantStatus.ACTIVE,
+  });
 
   await pool.query(
     `CREATE SCHEMA ${quoteSchemaIdentifier(tenantA.schemaName)}`,
@@ -45,10 +58,13 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
   await pool.query(
     `CREATE SCHEMA ${quoteSchemaIdentifier(tenantB.schemaName)}`,
   );
+  await pool.query(
+    `CREATE SCHEMA ${quoteSchemaIdentifier(rbacTenant.schemaName)}`,
+  );
   // Deliberately NOT creating a schema for the inactive tenant: TenantGuard
   // must reject it before any schema-scoped query ever runs.
 
-  return { tenantA, tenantB, inactiveTenant };
+  return { tenantA, tenantB, inactiveTenant, rbacTenant };
 }
 
 async function insertTenant(

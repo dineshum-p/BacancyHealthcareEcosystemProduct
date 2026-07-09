@@ -9,6 +9,8 @@ import type {
   AccessTokenPayload,
   AccessTokenResponse,
   AuthTokens,
+  RegisteredUser,
+  RoleDefinition,
 } from '@hep/shared-types';
 
 interface ErrorBody {
@@ -82,7 +84,12 @@ describe('Auth (e2e)', () => {
       .send({ email, password: 'super-secret-1' })
       .expect(201);
 
-    expect(response.body).toMatchObject({ email, role: 'member' });
+    // BAC-7: this is the FIRST-EVER registration against tenant A's schema
+    // in this describe block (the bootstrap-admin case), so the assigned
+    // role is `super_admin`, not the ordinary default `staff` -- see the
+    // dedicated "BAC-7: role-based access control" describe block below for
+    // the non-first-user default and the rest of the RBAC surface.
+    expect(response.body).toMatchObject({ email, role: 'super_admin' });
     expect(response.body).not.toHaveProperty('passwordHash');
     expect(response.body).not.toHaveProperty('password');
     expect(JSON.stringify(response.body)).not.toContain('super-secret-1');
@@ -133,7 +140,10 @@ describe('Auth (e2e)', () => {
     const claims = decode(body.accessToken) as AccessTokenPayload;
     expect(claims).toMatchObject({
       tenantId: tenants.tenantA.id,
-      role: 'member',
+      // BAC-7: NOT the tenant's first-ever user by this point in the file
+      // (the AC1 test above already registered one), so this gets the
+      // ordinary default role, `staff`.
+      role: 'staff',
     });
     expect(typeof claims.userId).toBe('string');
   });
@@ -293,5 +303,174 @@ describe('Auth (e2e)', () => {
       .set('X-Tenant-Id', tenants.tenantB.slug)
       .send({ email, password: 'a-different-password' })
       .expect(201);
+  });
+
+  /**
+   * BAC-7: RBAC. Uses `tenants.rbacTenant` (a tenant used ONLY by this
+   * describe block, per `test/support/tenant-fixtures.ts`'s doc comment) so
+   * "the first user registered is automatically super_admin" is
+   * deterministic and doesn't depend on execution order relative to
+   * `tenantA`/`tenantB`'s other uses above.
+   */
+  describe('BAC-7: role-based access control', () => {
+    let rootUserId: string;
+    let rootAccessToken: string;
+
+    async function registerAndLogin(tenantSlug: string): Promise<{
+      userId: string;
+      email: string;
+      accessToken: string;
+    }> {
+      const email = uniqueEmail();
+      const password = 'super-secret-1';
+      const registerResponse = await request(app.getHttpServer())
+        .post('/auth/register')
+        .set('X-Tenant-Id', tenantSlug)
+        .send({ email, password })
+        .expect(201);
+      const { id: userId } = registerResponse.body as RegisteredUser;
+
+      const loginResponse = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('X-Tenant-Id', tenantSlug)
+        .send({ email, password })
+        .expect(200);
+      const { accessToken } = loginResponse.body as AuthTokens;
+
+      return { userId, email, accessToken };
+    }
+
+    beforeAll(async () => {
+      // The FIRST-EVER registration against `rbacTenant`'s schema --
+      // bootstrap-admin resolution (BAC-7) makes this user `super_admin`.
+      const bootstrap = await registerAndLogin(tenants.rbacTenant.slug);
+      rootUserId = bootstrap.userId;
+      rootAccessToken = bootstrap.accessToken;
+    });
+
+    it('AC1 (bootstrap): the first user registered for a tenant is automatically super_admin', () => {
+      const claims = decode(rootAccessToken) as AccessTokenPayload;
+      expect(claims.role).toBe('super_admin');
+    });
+
+    it('AC1 (default): a subsequent registration in the same tenant defaults to staff, not super_admin', async () => {
+      const { accessToken } = await registerAndLogin(tenants.rbacTenant.slug);
+      const claims = decode(accessToken) as AccessTokenPayload;
+      expect(claims.role).toBe('staff');
+    });
+
+    it('AC1: GET /auth/roles returns the four seeded roles with their permission sets', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/auth/roles')
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${rootAccessToken}`)
+        .expect(200);
+
+      const roles = response.body as RoleDefinition[];
+      expect(roles.map((r) => r.role).sort()).toEqual([
+        'clinic_admin',
+        'provider',
+        'staff',
+        'super_admin',
+      ]);
+      const superAdmin = roles.find((r) => r.role === 'super_admin');
+      expect(superAdmin?.permissions).toEqual(
+        expect.arrayContaining(['manage_user_roles', 'view_users']),
+      );
+      const staff = roles.find((r) => r.role === 'staff');
+      expect(staff?.permissions).not.toContain('manage_user_roles');
+    });
+
+    it('GET /auth/roles requires authentication (401 with no Bearer token)', async () => {
+      await request(app.getHttpServer())
+        .get('/auth/roles')
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .expect(401);
+    });
+
+    it('AC2: a role lacking MANAGE_USER_ROLES gets 403 (not 401) attempting role assignment', async () => {
+      const staffUser = await registerAndLogin(tenants.rbacTenant.slug);
+      const anotherUser = await registerAndLogin(tenants.rbacTenant.slug);
+
+      await request(app.getHttpServer())
+        .patch(`/auth/users/${anotherUser.userId}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${staffUser.accessToken}`)
+        .send({ role: 'provider' })
+        .expect(403);
+    });
+
+    it("AC3 + AC4: super_admin can reassign a role (2xx), and the NEW role appears on the next login's JWT", async () => {
+      const target = await registerAndLogin(tenants.rbacTenant.slug);
+      // Confirm the pre-change token still carries the OLD role -- proving
+      // this is about the NEXT issued token, not retroactive invalidation
+      // (see `AuthService.updateUserRole`'s doc comment).
+      const preChangeClaims = decode(target.accessToken) as AccessTokenPayload;
+      expect(preChangeClaims.role).toBe('staff');
+
+      const patchResponse = await request(app.getHttpServer())
+        .patch(`/auth/users/${target.userId}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${rootAccessToken}`)
+        .send({ role: 'clinic_admin' })
+        .expect(200);
+      expect((patchResponse.body as RegisteredUser).role).toBe('clinic_admin');
+
+      // The OLD access token is untouched -- decoding it again still shows
+      // the OLD role (no access-token revocation infra exists; see
+      // `AuthService.updateUserRole`'s doc comment).
+      const staleClaims = decode(target.accessToken) as AccessTokenPayload;
+      expect(staleClaims.role).toBe('staff');
+
+      // A FRESH login for the same user now carries the NEW role (AC4).
+      const freshLogin = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .send({ email: target.email, password: 'super-secret-1' })
+        .expect(200);
+      const freshClaims = decode(
+        (freshLogin.body as AuthTokens).accessToken,
+      ) as AccessTokenPayload;
+      expect(freshClaims.role).toBe('clinic_admin');
+    });
+
+    it('rejects an unknown/invalid role value with 400', async () => {
+      const target = await registerAndLogin(tenants.rbacTenant.slug);
+
+      await request(app.getHttpServer())
+        .patch(`/auth/users/${target.userId}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${rootAccessToken}`)
+        .send({ role: 'wizard' })
+        .expect(400);
+    });
+
+    it('rejects assigning a role to a user in a DIFFERENT tenant with 404 (tenant isolation)', async () => {
+      const otherTenantUser = await registerAndLogin(tenants.tenantB.slug);
+
+      await request(app.getHttpServer())
+        .patch(`/auth/users/${otherTenantUser.userId}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${rootAccessToken}`)
+        .send({ role: 'clinic_admin' })
+        .expect(404);
+    });
+
+    it("rejects an unknown user id within the caller's own tenant with 404", async () => {
+      await request(app.getHttpServer())
+        .patch(`/auth/users/${randomUUID()}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .set('Authorization', `Bearer ${rootAccessToken}`)
+        .send({ role: 'clinic_admin' })
+        .expect(404);
+    });
+
+    it('requires authentication to attempt role assignment (401 with no Bearer token)', async () => {
+      await request(app.getHttpServer())
+        .patch(`/auth/users/${rootUserId}/role`)
+        .set('X-Tenant-Id', tenants.rbacTenant.slug)
+        .send({ role: 'staff' })
+        .expect(401);
+    });
   });
 });
