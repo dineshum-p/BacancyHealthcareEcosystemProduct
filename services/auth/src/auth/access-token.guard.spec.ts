@@ -20,6 +20,7 @@ const tenant = {
   plan: 'starter',
   status: TenantStatus.ACTIVE,
   schemaName: 'tenant_acme',
+  ownerEmail: 'owner@example.com',
 };
 
 describe('AccessTokenGuard', () => {
@@ -71,7 +72,7 @@ describe('AccessTokenGuard', () => {
     accessTokenService.verify.mockReturnValue({
       userId: 'user-1',
       tenantId: 'a-different-tenant',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
     const request = {
       headers: { authorization: 'Bearer good-token' },
@@ -87,7 +88,7 @@ describe('AccessTokenGuard', () => {
     accessTokenService.verify.mockReturnValue({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
     const request = {
       headers: { authorization: 'Bearer good-token' },
@@ -98,7 +99,7 @@ describe('AccessTokenGuard', () => {
     expect(request.user).toEqual({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
   });
 
@@ -106,7 +107,7 @@ describe('AccessTokenGuard', () => {
     accessTokenService.verify.mockReturnValue({
       userId: 'user-1',
       tenantId: 'tenant-1',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
     });
     const request = {
       headers: { authorization: 'Bearer good-token' },

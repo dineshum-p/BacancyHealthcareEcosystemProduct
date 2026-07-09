@@ -1,4 +1,8 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { AuthTokens, MfaChallenge } from '@hep/shared-types';
 import { AuthService } from './auth.service';
 import { UsersRepository } from './users.repository';
@@ -29,7 +33,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     id: 'user-1',
     email: 'ada@example.com',
     passwordHash: 'irrelevant',
-    role: UserRole.MEMBER,
+    role: UserRole.STAFF,
     createdAt: new Date(),
     mfaStatus: MfaStatus.NONE,
     mfaSecretEncrypted: null,
@@ -55,6 +59,10 @@ describe('AuthService', () => {
     plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
+    // Deliberately NOT `dto.email` below (normalized: `ada@example.com`),
+    // so the ordinary register() tests exercise the non-owner/default-STAFF
+    // path without needing to know about bootstrap-admin resolution at all.
+    ownerEmail: 'owner@example.com',
   };
 
   beforeEach(() => {
@@ -62,6 +70,8 @@ describe('AuthService', () => {
       findByEmail: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
+      count: jest.fn().mockResolvedValue(1),
+      updateRole: jest.fn(),
       startMfaEnrollment: jest.fn().mockResolvedValue(undefined),
       activateMfa: jest.fn(),
       recordMfaStepIfNewer: jest.fn(),
@@ -121,7 +131,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('normalizes the email to lowercase and defaults role to member (AC1)', async () => {
+    it("normalizes the email to lowercase and defaults role to staff (AC1, BAC-7) when the email does not match the tenant's ownerEmail", async () => {
       usersRepository.create.mockImplementation((user) =>
         Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
@@ -132,12 +142,12 @@ describe('AuthService', () => {
       expect(usersRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'ada@example.com',
-          role: UserRole.MEMBER,
+          role: UserRole.STAFF,
         }),
       );
       expect(result).toMatchObject({
         email: 'ada@example.com',
-        role: UserRole.MEMBER,
+        role: UserRole.STAFF,
       });
       expect(typeof result.id).toBe('string');
       expect(typeof result.createdAt).toBe('string');
@@ -175,6 +185,141 @@ describe('AuthService', () => {
         ConflictException,
       );
     });
+
+    describe('bootstrap-admin resolution (BAC-7)', () => {
+      it("assigns SUPER_ADMIN when the registering email exactly matches the tenant's ownerEmail", async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'ada@example.com',
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+        expect(usersRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({ role: UserRole.SUPER_ADMIN }),
+        );
+        expect(result.role).toBe(UserRole.SUPER_ADMIN);
+      });
+
+      it('assigns SUPER_ADMIN when the registering email matches ownerEmail case-insensitively', async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'ADA@EXAMPLE.COM',
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        expect(result.role).toBe(UserRole.SUPER_ADMIN);
+      });
+
+      it("assigns the default STAFF role when the registering email does NOT match ownerEmail, even when it is genuinely the tenant's first registration", async () => {
+        usersRepository.count.mockResolvedValue(0);
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: 'someone-else@example.com',
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+        expect(usersRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({ role: UserRole.STAFF }),
+        );
+        expect(result.role).toBe(UserRole.STAFF);
+      });
+
+      it('assigns the default STAFF role when the tenant has no ownerEmail (a pre-BAC-7 row)', async () => {
+        tenantContext.getTenant.mockReturnValue({
+          ...tenant,
+          ownerEmail: null,
+        });
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        const result = await service.register(dto);
+
+        expect(result.role).toBe(UserRole.STAFF);
+      });
+
+      it('resolves the tenant AFTER ensuring the schema exists', async () => {
+        usersRepository.create.mockImplementation((user) =>
+          Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+        );
+
+        await service.register(dto);
+
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+        expect(authSchemaProvisioner.ensureProvisioned).toHaveBeenCalledWith(
+          'tenant_acme',
+        );
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+        expect(tenantContext.getTenant).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('listRoles (AC1)', () => {
+    it('returns all four seeded roles with their permission sets', () => {
+      const roles = service.listRoles();
+
+      expect(roles.map((r) => r.role).sort()).toEqual(
+        [
+          UserRole.SUPER_ADMIN,
+          UserRole.CLINIC_ADMIN,
+          UserRole.PROVIDER,
+          UserRole.STAFF,
+        ].sort(),
+      );
+      // `roles` is typed against `@hep/shared-types`' plain string-literal
+      // `UserRole`, not this service's own enum, so these comparisons use
+      // the raw string values rather than the enum members.
+      const superAdmin = roles.find((r) => r.role === 'super_admin');
+      expect(superAdmin?.permissions).toContain('manage_user_roles');
+      const staff = roles.find((r) => r.role === 'staff');
+      expect(staff?.permissions).not.toContain('manage_user_roles');
+    });
+  });
+
+  describe('updateUserRole (AC2/AC3/AC4)', () => {
+    it('updates the role and returns the updated user, scoped to the current tenant', async () => {
+      usersRepository.updateRole.mockResolvedValue(
+        makeUser({ id: 'user-2', role: UserRole.CLINIC_ADMIN }),
+      );
+
+      const result = await service.updateUserRole(
+        'user-2',
+        UserRole.CLINIC_ADMIN,
+      );
+
+      expect(result).toMatchObject({
+        id: 'user-2',
+        role: UserRole.CLINIC_ADMIN,
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.updateRole).toHaveBeenCalledWith(
+        'user-2',
+        UserRole.CLINIC_ADMIN,
+      );
+    });
+
+    it('throws NotFoundException when the user does not exist in the current tenant (including cross-tenant ids)', async () => {
+      usersRepository.updateRole.mockResolvedValue(null);
+
+      await expect(
+        service.updateUserRole('someone-elses-id', UserRole.PROVIDER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 
   describe('login', () => {
@@ -201,7 +346,7 @@ describe('AuthService', () => {
       expect(accessTokenService.sign).toHaveBeenCalledWith({
         userId: 'user-1',
         tenantId: 'tenant-1',
-        role: UserRole.MEMBER,
+        role: UserRole.STAFF,
       });
     });
 
@@ -302,7 +447,7 @@ describe('AuthService', () => {
       expect(accessTokenService.sign).toHaveBeenCalledWith({
         userId: 'user-1',
         tenantId: 'tenant-1',
-        role: UserRole.MEMBER,
+        role: UserRole.STAFF,
       });
     });
 

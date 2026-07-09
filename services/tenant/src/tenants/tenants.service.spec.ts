@@ -16,6 +16,7 @@ describe('TenantsService', () => {
     name: 'Acme Inc',
     slug: 'acme',
     plan: 'starter',
+    ownerEmail: 'owner@acme.example.com',
   };
 
   const pendingTenant: Tenant = {
@@ -25,6 +26,7 @@ describe('TenantsService', () => {
     plan: 'starter',
     status: TenantStatus.PENDING,
     schemaName: 'tenant_acme',
+    ownerEmail: 'owner@acme.example.com',
   };
 
   beforeEach(() => {
@@ -60,6 +62,7 @@ describe('TenantsService', () => {
           plan: 'starter',
           status: TenantStatus.PENDING,
           schemaName: 'tenant_acme',
+          ownerEmail: 'owner@acme.example.com',
         }),
       );
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock, `this` binding is irrelevant

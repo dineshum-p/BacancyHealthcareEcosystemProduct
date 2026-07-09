@@ -80,6 +80,23 @@ export class UsersRepository {
     return row ? this.toEntity(row) : null;
   }
 
+  /**
+   * BAC-7 bootstrap-admin check: how many users already exist for the
+   * CURRENT tenant (scoped the same way every other query here is). `0`
+   * means the caller is about to register the first user for this tenant --
+   * see `AuthService.register`'s doc comment for why that matters.
+   */
+  async count(): Promise<number> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    const result: QueryResult<{ count: string }> = await client.query(
+      `SELECT COUNT(*) AS count FROM ${schema}.users`,
+    );
+    return Number(result.rows[0].count);
+  }
+
   async create(user: NewUser): Promise<User> {
     const client = await this.tenantContext.getSchemaBoundClient();
     const schema = quoteSchemaIdentifier(
@@ -171,6 +188,29 @@ export class UsersRepository {
       [userId, step],
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * BAC-7, AC4: persists a new role for a user already known to belong to
+   * the CURRENT tenant (the caller must resolve the target user via
+   * `findById` -- itself scoped to this tenant's schema -- before calling
+   * this, so cross-tenant assignment is structurally impossible: a user id
+   * from a different tenant simply is not a row in this schema's `users`
+   * table). Returns the updated `User`, or `null` if the id no longer
+   * exists in this tenant (e.g. a race with a deletion -- not currently
+   * possible since there is no delete-user endpoint, but handled anyway).
+   */
+  async updateRole(userId: string, role: UserRole): Promise<User | null> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    const result: QueryResult<UserRow> = await client.query(
+      `UPDATE ${schema}.users SET role = $2 WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+      [userId, role],
+    );
+    const row = result.rows[0];
+    return row ? this.toEntity(row) : null;
   }
 
   private toEntity(row: UserRow): User {

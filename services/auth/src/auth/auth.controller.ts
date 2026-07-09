@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -14,15 +17,20 @@ import type {
   MfaActivation,
   MfaEnrollment,
   RegisteredUser,
+  RoleDefinition,
 } from '@hep/shared-types';
 import { TenantGuard } from '../tenant-context/tenant.guard';
 import { AccessTokenGuard } from './access-token.guard';
+import { PermissionsGuard } from './permissions.guard';
+import { RequirePermissions } from './permissions.decorator';
+import { Permission } from './permission.enum';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import type { RequestWithAuth } from './request-with-auth.interface';
 
 /**
@@ -84,6 +92,39 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   completeMfaLogin(@Body() dto: MfaLoginVerifyDto): Promise<AuthTokens> {
     return this.authService.completeMfaLogin(dto);
+  }
+
+  /**
+   * BAC-7, AC1: read-only RBAC metadata (the four roles and each one's
+   * permission set) -- proves the role/permission catalog is queryable over
+   * HTTP, not just an in-code constant. Guarded only by `AccessTokenGuard`
+   * (any authenticated caller, no specific permission): this describes the
+   * RBAC model itself, not a specific tenant's or user's data.
+   */
+  @Get('roles')
+  @UseGuards(AccessTokenGuard)
+  @HttpCode(HttpStatus.OK)
+  listRoles(): RoleDefinition[] {
+    return this.authService.listRoles();
+  }
+
+  /**
+   * BAC-7, AC2/AC3/AC4: reassigns a user's role. Requires
+   * `MANAGE_USER_ROLES` (`PermissionsGuard`, composed AFTER
+   * `AccessTokenGuard` so `request.user.role` is already populated).
+   * Tenant isolation and "does this user exist" are both enforced by
+   * `AuthService.updateUserRole` (see its doc comment) -- this controller
+   * stays thin (validation via `UpdateUserRoleDto`'s `@IsEnum` + delegation).
+   */
+  @Patch('users/:id/role')
+  @UseGuards(AccessTokenGuard, PermissionsGuard)
+  @RequirePermissions(Permission.MANAGE_USER_ROLES)
+  @HttpCode(HttpStatus.OK)
+  updateUserRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserRoleDto,
+  ): Promise<RegisteredUser> {
+    return this.authService.updateUserRole(id, dto.role);
   }
 }
 

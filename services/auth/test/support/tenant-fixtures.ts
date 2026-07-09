@@ -9,6 +9,14 @@ export interface SeededTenants {
   tenantA: Tenant;
   tenantB: Tenant;
   inactiveTenant: Tenant;
+  /**
+   * A tenant used exclusively by BAC-7's RBAC e2e tests, so their
+   * bootstrap-admin assertions (which depend on being the FIRST-EVER
+   * registration against a tenant's schema) are self-contained and don't
+   * depend on execution order relative to `tenantA`/`tenantB`'s other uses
+   * elsewhere in the same spec file.
+   */
+  rbacTenant: Tenant;
 }
 
 /**
@@ -27,16 +35,25 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
     slug: 'tenant-a',
     schemaName: 'tenant_a',
     status: TenantStatus.ACTIVE,
+    ownerEmail: 'owner-a@example.com',
   });
   const tenantB = await insertTenant(pool, tenantsRepository, {
     slug: 'tenant-b',
     schemaName: 'tenant_b',
     status: TenantStatus.ACTIVE,
+    ownerEmail: 'owner-b@example.com',
   });
   const inactiveTenant = await insertTenant(pool, tenantsRepository, {
     slug: 'tenant-inactive',
     schemaName: 'tenant_inactive',
     status: TenantStatus.INACTIVE,
+    ownerEmail: 'owner-inactive@example.com',
+  });
+  const rbacTenant = await insertTenant(pool, tenantsRepository, {
+    slug: 'tenant-rbac',
+    schemaName: 'tenant_rbac',
+    status: TenantStatus.ACTIVE,
+    ownerEmail: 'owner-rbac@example.com',
   });
 
   await pool.query(
@@ -45,20 +62,23 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
   await pool.query(
     `CREATE SCHEMA ${quoteSchemaIdentifier(tenantB.schemaName)}`,
   );
+  await pool.query(
+    `CREATE SCHEMA ${quoteSchemaIdentifier(rbacTenant.schemaName)}`,
+  );
   // Deliberately NOT creating a schema for the inactive tenant: TenantGuard
   // must reject it before any schema-scoped query ever runs.
 
-  return { tenantA, tenantB, inactiveTenant };
+  return { tenantA, tenantB, inactiveTenant, rbacTenant };
 }
 
 async function insertTenant(
   pool: Pool,
   tenantsRepository: TenantsRepository,
-  fields: Pick<Tenant, 'slug' | 'schemaName' | 'status'>,
+  fields: Pick<Tenant, 'slug' | 'schemaName' | 'status' | 'ownerEmail'>,
 ): Promise<Tenant> {
   await pool.query(
-    `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       randomUUID(),
       fields.slug,
@@ -66,11 +86,36 @@ async function insertTenant(
       fields.schemaName,
       fields.slug,
       'starter',
+      fields.ownerEmail,
     ],
   );
   const tenant = await tenantsRepository.findByIdentifier(fields.slug);
   if (!tenant) {
     throw new Error(`Failed to seed tenant "${fields.slug}"`);
   }
+  return tenant;
+}
+
+/**
+ * Creates one additional active tenant (with its own schema) beyond the
+ * fixed set `seedTestTenants` returns, for BAC-7 tests that need a
+ * dedicated, per-test `ownerEmail` (e.g. proving the bootstrap-exploit is
+ * closed for a brand-new tenant, or that concurrent non-owner registrations
+ * both land as `staff`) without disturbing `rbacTenant`'s own
+ * already-registered owner.
+ */
+export async function createAdditionalTenant(
+  pool: Pool,
+  fields: { slug: string; ownerEmail: string },
+): Promise<Tenant> {
+  const tenantsRepository = new TenantsRepository(pool);
+  const schemaName = fields.slug.replace(/-/g, '_');
+  const tenant = await insertTenant(pool, tenantsRepository, {
+    slug: fields.slug,
+    schemaName,
+    status: TenantStatus.ACTIVE,
+    ownerEmail: fields.ownerEmail,
+  });
+  await pool.query(`CREATE SCHEMA ${quoteSchemaIdentifier(schemaName)}`);
   return tenant;
 }

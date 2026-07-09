@@ -16,8 +16,8 @@ describe('TenantsRepository', () => {
     repository = new TenantsRepository(pool);
 
     await pool.query(
-      `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         'tenant-1',
         'acme',
@@ -25,16 +25,18 @@ describe('TenantsRepository', () => {
         'tenant_acme',
         'Acme Inc',
         'starter',
+        'owner@acme.example.com',
       ],
     );
   });
 
-  it('resolves a tenant by slug', async () => {
+  it('resolves a tenant by slug, including its owner email', async () => {
     await expect(repository.findByIdentifier('acme')).resolves.toMatchObject({
       id: 'tenant-1',
       slug: 'acme',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@acme.example.com',
     });
   });
 
@@ -48,5 +50,26 @@ describe('TenantsRepository', () => {
 
   it('returns null for an unknown identifier', async () => {
     await expect(repository.findByIdentifier('ghost')).resolves.toBeNull();
+  });
+
+  it('resolves ownerEmail as null for a pre-BAC-7 tenant row with no owner email', async () => {
+    await pool.query(
+      `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        'tenant-2',
+        'legacy',
+        TenantStatus.ACTIVE,
+        'tenant_legacy',
+        'Legacy Co',
+        'starter',
+        null,
+      ],
+    );
+
+    await expect(repository.findByIdentifier('legacy')).resolves.toMatchObject({
+      slug: 'legacy',
+      ownerEmail: null,
+    });
   });
 });

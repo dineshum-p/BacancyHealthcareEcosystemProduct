@@ -53,7 +53,12 @@ describe('Tenant provisioning (e2e)', () => {
   it('provisions a tenant with a real, queryable Postgres schema (AC1, AC2)', async () => {
     const response = await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Acme Inc', slug: 'acme-corp', plan: 'starter' })
+      .send({
+        name: 'Acme Inc',
+        slug: 'acme-corp',
+        plan: 'starter',
+        ownerEmail: 'owner@acme-corp.example.com',
+      })
       .expect(201);
 
     expect(response.body).toMatchObject({
@@ -63,6 +68,12 @@ describe('Tenant provisioning (e2e)', () => {
       status: 'active',
       schemaName: 'tenant_acme_corp',
     });
+    // BAC-7 review: `ownerEmail` is the bootstrap-admin secret bound at
+    // tenant-creation time (see `AuthService.register`'s doc comment) and
+    // `POST /tenants` is deliberately UNAUTHENTICATED, so it must never
+    // appear in this response body -- otherwise anyone could read it back
+    // here and win the bootstrap-admin race.
+    expect(response.body).not.toHaveProperty('ownerEmail');
     const createdTenant = response.body as Tenant;
     expect(typeof createdTenant.id).toBe('string');
     expect(createdTenant.id.length).toBeGreaterThan(0);
@@ -80,13 +91,42 @@ describe('Tenant provisioning (e2e)', () => {
   it('rejects a duplicate slug with 409 (AC3)', async () => {
     await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'First Co', slug: 'dup-tenant', plan: 'starter' })
+      .send({
+        name: 'First Co',
+        slug: 'dup-tenant',
+        plan: 'starter',
+        ownerEmail: 'owner@first-co.example.com',
+      })
       .expect(201);
 
     await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Second Co', slug: 'dup-tenant', plan: 'pro' })
+      .send({
+        name: 'Second Co',
+        slug: 'dup-tenant',
+        plan: 'pro',
+        ownerEmail: 'owner@second-co.example.com',
+      })
       .expect(409);
+  });
+
+  it('rejects tenant creation with a missing ownerEmail with 400 (BAC-7)', async () => {
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'No Owner Co', slug: 'no-owner-co', plan: 'starter' })
+      .expect(400);
+  });
+
+  it('rejects tenant creation with an invalid ownerEmail with 400 (BAC-7)', async () => {
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({
+        name: 'Bad Owner Co',
+        slug: 'bad-owner-co',
+        plan: 'starter',
+        ownerEmail: 'not-an-email',
+      })
+      .expect(400);
   });
 
   it('returns 404 for an unknown tenant id', async () => {
@@ -98,7 +138,12 @@ describe('Tenant provisioning (e2e)', () => {
   it('returns the created tenant with its active status by id (AC4)', async () => {
     const created = await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Gamma LLC', slug: 'gamma-llc', plan: 'starter' })
+      .send({
+        name: 'Gamma LLC',
+        slug: 'gamma-llc',
+        plan: 'starter',
+        ownerEmail: 'owner@gamma-llc.example.com',
+      })
       .expect(201);
     const createdTenant = created.body as Tenant;
 
@@ -111,6 +156,11 @@ describe('Tenant provisioning (e2e)', () => {
       slug: 'gamma-llc',
       status: 'active',
     });
+    // BAC-7 review: same reasoning as the POST assertion above -- `GET
+    // /tenants/:id` is also UNAUTHENTICATED, so learning a tenant's id (its
+    // slug or a guessed/enumerated UUID) must never be enough to also learn
+    // its `ownerEmail`.
+    expect(fetched.body).not.toHaveProperty('ownerEmail');
   });
 
   it('reflects the pending -> active provisioning status transition on GET (AC4)', async () => {
@@ -126,6 +176,7 @@ describe('Tenant provisioning (e2e)', () => {
       plan: 'starter',
       status: TenantStatus.PENDING,
       schemaName: 'tenant_transition',
+      ownerEmail: 'owner@transition.example.com',
     });
 
     const whilePending = await request(app.getHttpServer())

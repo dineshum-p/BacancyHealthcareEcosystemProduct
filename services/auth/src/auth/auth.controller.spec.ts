@@ -3,6 +3,7 @@ import type {
   MfaActivation,
   MfaEnrollment,
   RegisteredUser,
+  RoleDefinition,
 } from '@hep/shared-types';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -21,6 +22,8 @@ describe('AuthController', () => {
       enrollMfa: jest.fn(),
       verifyMfaEnrollment: jest.fn(),
       completeMfaLogin: jest.fn(),
+      listRoles: jest.fn(),
+      updateUserRole: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
     controller = new AuthController(service);
   });
@@ -30,7 +33,7 @@ describe('AuthController', () => {
     const created: RegisteredUser = {
       id: 'user-1',
       email: 'ada@example.com',
-      role: UserRole.MEMBER,
+      role: UserRole.STAFF,
       createdAt: new Date().toISOString(),
     };
     service.register.mockResolvedValue(created);
@@ -79,7 +82,7 @@ describe('AuthController', () => {
 
   function makeAuthenticatedRequest(userId: string): RequestWithAuth {
     return {
-      user: { userId, tenantId: 'tenant-1', role: UserRole.MEMBER },
+      user: { userId, tenantId: 'tenant-1', role: UserRole.STAFF },
     } as unknown as RequestWithAuth;
   }
 
@@ -132,5 +135,36 @@ describe('AuthController', () => {
     await expect(controller.completeMfaLogin(dto)).resolves.toBe(tokens);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
     expect(service.completeMfaLogin).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates GET /auth/roles to the service (AC1)', () => {
+    const roles: RoleDefinition[] = [
+      { role: 'super_admin', permissions: ['manage_user_roles', 'view_users'] },
+      { role: 'staff', permissions: ['view_users'] },
+    ];
+    service.listRoles.mockReturnValue(roles);
+
+    expect(controller.listRoles()).toBe(roles);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.listRoles).toHaveBeenCalledWith();
+  });
+
+  it('delegates PATCH /auth/users/:id/role to the service with the path id and dto role', async () => {
+    const updated: RegisteredUser = {
+      id: 'user-2',
+      email: 'grace@example.com',
+      role: UserRole.CLINIC_ADMIN,
+      createdAt: new Date().toISOString(),
+    };
+    service.updateUserRole.mockResolvedValue(updated);
+
+    await expect(
+      controller.updateUserRole('user-2', { role: UserRole.CLINIC_ADMIN }),
+    ).resolves.toBe(updated);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.updateUserRole).toHaveBeenCalledWith(
+      'user-2',
+      UserRole.CLINIC_ADMIN,
+    );
   });
 });

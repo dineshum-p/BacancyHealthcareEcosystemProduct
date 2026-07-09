@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import type {
@@ -12,6 +13,7 @@ import type {
   MfaActivation,
   MfaEnrollment,
   RegisteredUser,
+  RoleDefinition,
 } from '@hep/shared-types';
 import { UsersRepository } from './users.repository';
 import { RefreshTokensRepository } from './refresh-tokens.repository';
@@ -23,7 +25,8 @@ import {
 } from './mfa-challenge-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
-import { UserRole } from './user-role.enum';
+import { DEFAULT_REGISTRATION_ROLE, UserRole } from './user-role.enum';
+import { ALL_ROLES, getPermissionsForRole } from './role-permissions.map';
 import { MfaStatus } from './mfa-status.enum';
 import { User } from './user.entity';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
@@ -63,6 +66,16 @@ const ACCOUNT_NOT_FOUND_MESSAGE = 'Invalid or expired access token.';
 /** Distinct from AC4's message: this is a state-conflict, not a bad code. */
 const NO_PENDING_ENROLLMENT_MESSAGE =
   'No pending MFA enrollment for this user.';
+/**
+ * BAC-7: returned both when the target user genuinely does not exist AND
+ * when it exists but in a different tenant's schema (`UsersRepository`'s
+ * queries -- including the lookup inside `updateUserRole` -- are always
+ * scoped to the CALLER's resolved tenant, so a cross-tenant id simply never
+ * resolves). This is a deliberate byproduct of tenant isolation, not a
+ * distinct code path: a 404 here never confirms or denies that a user id
+ * exists in SOME other tenant.
+ */
+const USER_NOT_FOUND_MESSAGE = 'User not found.';
 
 /**
  * Lazily computed and cached: an Argon2 hash of a fixed placeholder,
@@ -94,18 +107,48 @@ export class AuthService {
     private readonly tenantContext: TenantContextService,
   ) {}
 
-  /** AC1: creates a user scoped to the resolved tenant. */
+  /**
+   * AC1: creates a user scoped to the resolved tenant.
+   *
+   * BAC-7 bootstrap-admin resolution: role-assignment (`updateUserRole`)
+   * requires an EXISTING role-manager (`MANAGE_USER_ROLES`) to grant a role,
+   * which creates a bootstrap problem -- there would be no way to ever get a
+   * `super_admin` for a brand-new tenant via the API alone. This is resolved
+   * minimally, without a separate seeding/admin-invite feature, by binding
+   * promotion to the tenant's `ownerEmail` (set once, at tenant-creation
+   * time -- see `services/tenant`'s `CreateTenantDto` -- and mirrored
+   * read-only here via `TenantsRepository`): a registration is promoted to
+   * `SUPER_ADMIN` if and only if its (case-insensitively normalized) email
+   * exactly matches the resolved tenant's `ownerEmail`; every other
+   * registration gets `DEFAULT_REGISTRATION_ROLE` (`STAFF`, the
+   * least-privileged role -- a safe, unprivileged default for anyone who
+   * self-registers rather than being invited/promoted by an admin).
+   *
+   * This closes the previous "whoever registers first" exploit (anyone who
+   * guessed/knew a tenant's slug could win the race to become its sole
+   * super_admin) AND is inherently race-proof: only the one specific
+   * `ownerEmail` string can ever trigger promotion, not "whoever's first",
+   * and the `users` table's `UNIQUE(email)` constraint already prevents that
+   * exact email from ever registering twice -- so two concurrent
+   * registrations can never both be the owner. A tenant whose `ownerEmail`
+   * is `null` (a row that predates this column) simply has no
+   * bootstrap-eligible email going forward.
+   */
   async register(dto: RegisterDto): Promise<RegisteredUser> {
     await this.ensureSchema();
     const email = normalizeEmail(dto.email);
     const passwordHash = await hashPassword(dto.password);
+    const tenant = this.tenantContext.getTenant();
+    const isOwner =
+      tenant.ownerEmail !== null && email === normalizeEmail(tenant.ownerEmail);
+    const role = isOwner ? UserRole.SUPER_ADMIN : DEFAULT_REGISTRATION_ROLE;
 
     try {
       const user = await this.usersRepository.create({
         id: randomUUID(),
         email,
         passwordHash,
-        role: UserRole.MEMBER,
+        role,
       });
       return this.toRegisteredUser(user);
     } catch (error) {
@@ -114,6 +157,52 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  /**
+   * BAC-7, AC1: the seeded role -> permission-set catalog, queryable over
+   * HTTP via `GET /auth/roles`. Guarded by `AccessTokenGuard` only (no
+   * specific permission) -- it is read-only metadata about the RBAC model
+   * itself, not a specific user's or tenant's data, so any authenticated
+   * caller may read it.
+   */
+  listRoles(): RoleDefinition[] {
+    return ALL_ROLES.map((role) => ({
+      role,
+      permissions: [...getPermissionsForRole(role)],
+    }));
+  }
+
+  /**
+   * BAC-7, AC4: updates a user's role. The next access/refresh token issued
+   * for that user (their next login, or their next `/auth/refresh`) will
+   * carry the new role -- this does NOT retroactively invalidate any
+   * already-issued access token, since no revocation infrastructure exists
+   * for access tokens (only for refresh tokens, per BAC-5/6); building that
+   * is out of scope for this ticket.
+   *
+   * Tenant isolation: `usersRepository.updateRole` only ever touches the
+   * CALLER's resolved tenant's schema (see `TenantContextService`), so a
+   * `userId` belonging to a different tenant simply does not exist in that
+   * schema and this throws `NotFoundException` (404) -- the same outcome as
+   * a genuinely unknown id, by design (see `USER_NOT_FOUND_MESSAGE`'s doc
+   * comment): cross-tenant role assignment is structurally impossible, not
+   * merely rejected after the fact.
+   *
+   * Self-role-change and de-escalating a tenant's last `super_admin` are
+   * both deliberately NOT prevented -- an accepted, documented scope call
+   * for this ticket rather than over-building a more elaborate policy.
+   */
+  async updateUserRole(
+    userId: string,
+    role: UserRole,
+  ): Promise<RegisteredUser> {
+    await this.ensureSchema();
+    const updated = await this.usersRepository.updateRole(userId, role);
+    if (!updated) {
+      throw new NotFoundException(USER_NOT_FOUND_MESSAGE);
+    }
+    return this.toRegisteredUser(updated);
   }
 
   /**

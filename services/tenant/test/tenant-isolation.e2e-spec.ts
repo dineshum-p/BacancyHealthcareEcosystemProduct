@@ -69,6 +69,24 @@ describe('Tenant isolation (e2e)', () => {
     });
   });
 
+  it('never includes ownerEmail in the GET /tenant-context/me response (BAC-7 review, 3rd leak point)', async () => {
+    // `GET /tenant-context/me` is reachable with nothing but a guessable
+    // `X-Tenant-Id` header (no user-identity check) -- see
+    // `tenant-context.controller.ts`'s doc comment. Guard against the exact
+    // regression that let `ownerEmail` (the bootstrap-admin secret) leak
+    // through this third, previously-unaudited route.
+    const response = await request(app.getHttpServer())
+      .get('/tenant-context/me')
+      .set('X-Tenant-Id', tenants.tenantA.slug)
+      .expect(200);
+
+    expect(response.body).not.toHaveProperty('ownerEmail');
+    // Raw substring check on the wire payload (not just the typed field) so
+    // this also catches the secret leaking under a renamed/nested key.
+    expect(response.text).not.toContain('owner-a@example.com');
+    expect(response.text.toLowerCase()).not.toContain('owneremail');
+  });
+
   it('returns 404 for an unknown tenant and touches no schema', async () => {
     await request(app.getHttpServer())
       .get('/items')
