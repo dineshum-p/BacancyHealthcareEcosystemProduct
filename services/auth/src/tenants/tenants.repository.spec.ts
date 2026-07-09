@@ -67,9 +67,7 @@ describe('TenantsRepository', () => {
       ],
     );
 
-    await expect(
-      repository.findByIdentifier('legacy'),
-    ).resolves.toMatchObject({
+    await expect(repository.findByIdentifier('legacy')).resolves.toMatchObject({
       slug: 'legacy',
       ownerEmail: null,
     });

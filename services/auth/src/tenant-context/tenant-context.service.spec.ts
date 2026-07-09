@@ -51,6 +51,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
@@ -66,6 +67,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
@@ -84,6 +86,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
@@ -104,6 +107,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'bad; drop table x;',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
@@ -119,6 +123,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'bad; drop table x;',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
@@ -141,6 +146,7 @@ describe('TenantContextService', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@example.com',
     };
     const service = new TenantContextService(request, pool);
 
