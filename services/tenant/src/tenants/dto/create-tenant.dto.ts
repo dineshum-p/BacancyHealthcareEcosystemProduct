@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * Slugs are used both as the public tenant identifier (BAC-4's `X-Tenant-Id`
@@ -26,4 +32,17 @@ export class CreateTenantDto {
   @IsNotEmpty()
   @MaxLength(50)
   plan!: string;
+
+  /**
+   * BAC-7: the single email address permitted to bootstrap this tenant's
+   * `super_admin` (`services/auth`'s `AuthService.register` promotes
+   * whichever registrant's email exactly matches this value, case
+   * -insensitively, instead of "whoever registers first" -- see that
+   * service's doc comment for the full exploit this closes). Required at
+   * creation time so every tenant onboarded from now on has a bootstrap
+   * owner bound up front, before its slug is ever guessable/usable.
+   */
+  @IsEmail()
+  @MaxLength(320)
+  ownerEmail!: string;
 }

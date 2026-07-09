@@ -13,6 +13,7 @@ interface TenantRow {
   schema_name: string;
   name: string;
   plan: string;
+  owner_email: string | null;
 }
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
@@ -51,7 +52,7 @@ export class TenantsRepository {
    */
   async findByIdentifier(identifier: string): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
-      'SELECT id, slug, status, schema_name, name, plan FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1',
+      'SELECT id, slug, status, schema_name, name, plan, owner_email FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1',
       [identifier],
     );
     const row = result.rows[0];
@@ -61,7 +62,7 @@ export class TenantsRepository {
   /** Resolves a tenant strictly by id (BAC-3's `GET /tenants/:id`). */
   async findById(id: string): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
-      'SELECT id, slug, status, schema_name, name, plan FROM public.tenants WHERE id = $1 LIMIT 1',
+      'SELECT id, slug, status, schema_name, name, plan, owner_email FROM public.tenants WHERE id = $1 LIMIT 1',
       [id],
     );
     const row = result.rows[0];
@@ -75,9 +76,9 @@ export class TenantsRepository {
     assertSafeSchemaName(tenant.schemaName);
     try {
       const result: QueryResult<TenantRow> = await this.pool.query(
-        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, slug, status, schema_name, name, plan`,
+        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, slug, status, schema_name, name, plan, owner_email`,
         [
           tenant.id,
           tenant.slug,
@@ -85,6 +86,7 @@ export class TenantsRepository {
           tenant.schemaName,
           tenant.name,
           tenant.plan,
+          tenant.ownerEmail,
         ],
       );
       return this.toEntity(result.rows[0]);
@@ -110,7 +112,7 @@ export class TenantsRepository {
       `UPDATE public.tenants
        SET status = $2
        WHERE id = $1
-       RETURNING id, slug, status, schema_name, name, plan`,
+       RETURNING id, slug, status, schema_name, name, plan, owner_email`,
       [id, status],
     );
     const row = result.rows[0];
@@ -125,6 +127,7 @@ export class TenantsRepository {
       plan: row.plan,
       status: row.status as TenantStatus,
       schemaName: row.schema_name,
+      ownerEmail: row.owner_email,
     };
   }
 }

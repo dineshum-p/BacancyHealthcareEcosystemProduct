@@ -46,6 +46,7 @@ export class TenantsService {
         plan: dto.plan,
         status: TenantStatus.PENDING,
         schemaName,
+        ownerEmail: dto.ownerEmail,
       });
     } catch (error) {
       if (error instanceof SlugAlreadyExistsError) {

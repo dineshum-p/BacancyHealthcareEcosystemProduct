@@ -15,4 +15,11 @@ export interface Tenant {
   plan: string;
   status: TenantStatus;
   schemaName: string;
+  /**
+   * BAC-7: the single email address permitted to bootstrap this tenant's
+   * `super_admin` in `services/auth`. `null` only for tenants that predate
+   * this column (see the `1752105600000_add-tenant-owner-email` migration);
+   * every tenant created via `CreateTenantDto` from now on always has one.
+   */
+  ownerEmail: string | null;
 }

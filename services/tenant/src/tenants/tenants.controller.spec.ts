@@ -15,6 +15,7 @@ describe('TenantsController', () => {
     plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
+    ownerEmail: 'owner@acme.example.com',
   };
 
   beforeEach(() => {
@@ -30,6 +31,7 @@ describe('TenantsController', () => {
       name: 'Acme Inc',
       slug: 'acme',
       plan: 'starter',
+      ownerEmail: 'owner@acme.example.com',
     };
     service.create.mockResolvedValue(tenant);
 

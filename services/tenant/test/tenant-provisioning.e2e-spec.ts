@@ -53,7 +53,12 @@ describe('Tenant provisioning (e2e)', () => {
   it('provisions a tenant with a real, queryable Postgres schema (AC1, AC2)', async () => {
     const response = await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Acme Inc', slug: 'acme-corp', plan: 'starter' })
+      .send({
+        name: 'Acme Inc',
+        slug: 'acme-corp',
+        plan: 'starter',
+        ownerEmail: 'owner@acme-corp.example.com',
+      })
       .expect(201);
 
     expect(response.body).toMatchObject({
@@ -62,6 +67,7 @@ describe('Tenant provisioning (e2e)', () => {
       plan: 'starter',
       status: 'active',
       schemaName: 'tenant_acme_corp',
+      ownerEmail: 'owner@acme-corp.example.com',
     });
     const createdTenant = response.body as Tenant;
     expect(typeof createdTenant.id).toBe('string');
@@ -80,13 +86,42 @@ describe('Tenant provisioning (e2e)', () => {
   it('rejects a duplicate slug with 409 (AC3)', async () => {
     await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'First Co', slug: 'dup-tenant', plan: 'starter' })
+      .send({
+        name: 'First Co',
+        slug: 'dup-tenant',
+        plan: 'starter',
+        ownerEmail: 'owner@first-co.example.com',
+      })
       .expect(201);
 
     await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Second Co', slug: 'dup-tenant', plan: 'pro' })
+      .send({
+        name: 'Second Co',
+        slug: 'dup-tenant',
+        plan: 'pro',
+        ownerEmail: 'owner@second-co.example.com',
+      })
       .expect(409);
+  });
+
+  it('rejects tenant creation with a missing ownerEmail with 400 (BAC-7)', async () => {
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({ name: 'No Owner Co', slug: 'no-owner-co', plan: 'starter' })
+      .expect(400);
+  });
+
+  it('rejects tenant creation with an invalid ownerEmail with 400 (BAC-7)', async () => {
+    await request(app.getHttpServer())
+      .post('/tenants')
+      .send({
+        name: 'Bad Owner Co',
+        slug: 'bad-owner-co',
+        plan: 'starter',
+        ownerEmail: 'not-an-email',
+      })
+      .expect(400);
   });
 
   it('returns 404 for an unknown tenant id', async () => {
@@ -98,7 +133,12 @@ describe('Tenant provisioning (e2e)', () => {
   it('returns the created tenant with its active status by id (AC4)', async () => {
     const created = await request(app.getHttpServer())
       .post('/tenants')
-      .send({ name: 'Gamma LLC', slug: 'gamma-llc', plan: 'starter' })
+      .send({
+        name: 'Gamma LLC',
+        slug: 'gamma-llc',
+        plan: 'starter',
+        ownerEmail: 'owner@gamma-llc.example.com',
+      })
       .expect(201);
     const createdTenant = created.body as Tenant;
 
@@ -126,6 +166,7 @@ describe('Tenant provisioning (e2e)', () => {
       plan: 'starter',
       status: TenantStatus.PENDING,
       schemaName: 'tenant_transition',
+      ownerEmail: 'owner@transition.example.com',
     });
 
     const whilePending = await request(app.getHttpServer())

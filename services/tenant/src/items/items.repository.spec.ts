@@ -31,6 +31,7 @@ describe('ItemsRepository', () => {
     plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
+    ownerEmail: 'owner@acme.example.com',
   };
 
   beforeEach(async () => {

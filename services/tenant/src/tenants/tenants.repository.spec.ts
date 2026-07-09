@@ -29,10 +29,12 @@ describe('TenantsRepository', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      ownerEmail: 'owner@acme.example.com',
     });
     expect(created.slug).toBe('acme');
     expect(created.name).toBe('Acme Inc');
     expect(created.plan).toBe('starter');
+    expect(created.ownerEmail).toBe('owner@acme.example.com');
 
     await expect(repository.findByIdentifier('acme')).resolves.toEqual(created);
   });
@@ -45,9 +47,27 @@ describe('TenantsRepository', () => {
       plan: 'pro',
       status: TenantStatus.INACTIVE,
       schemaName: 'tenant_beta',
+      ownerEmail: 'owner@beta.example.com',
     });
 
     await expect(repository.findByIdentifier('tenant-2')).resolves.toEqual(
+      created,
+    );
+  });
+
+  it('persists a null owner_email for a tenant created without one (pre-BAC-7 rows)', async () => {
+    const created = await repository.create({
+      id: 'tenant-legacy',
+      slug: 'legacy',
+      name: 'Legacy Co',
+      plan: 'starter',
+      status: TenantStatus.ACTIVE,
+      schemaName: 'tenant_legacy',
+      ownerEmail: null,
+    });
+
+    expect(created.ownerEmail).toBeNull();
+    await expect(repository.findByIdentifier('legacy')).resolves.toEqual(
       created,
     );
   });
@@ -61,6 +81,7 @@ describe('TenantsRepository', () => {
         plan: 'starter',
         status: TenantStatus.ACTIVE,
         schemaName: 'bad; drop table x;',
+        ownerEmail: 'owner@evil.example.com',
       }),
     ).rejects.toThrow(/unsafe schema name/i);
 
@@ -80,6 +101,7 @@ describe('TenantsRepository', () => {
         plan: 'starter',
         status: TenantStatus.PENDING,
         schemaName: 'tenant_gamma',
+        ownerEmail: 'owner@gamma.example.com',
       });
 
       await expect(repository.findById('tenant-4')).resolves.toEqual(created);
@@ -97,6 +119,7 @@ describe('TenantsRepository', () => {
         plan: 'starter',
         status: TenantStatus.PENDING,
         schemaName: 'tenant_dup_1',
+        ownerEmail: 'owner-first@example.com',
       });
 
       await expect(
@@ -107,6 +130,7 @@ describe('TenantsRepository', () => {
           plan: 'starter',
           status: TenantStatus.PENDING,
           schemaName: 'tenant_dup_2',
+          ownerEmail: 'owner-second@example.com',
         }),
       ).rejects.toThrow(SlugAlreadyExistsError);
     });
@@ -121,6 +145,7 @@ describe('TenantsRepository', () => {
         plan: 'starter',
         status: TenantStatus.PENDING,
         schemaName: 'tenant_delta',
+        ownerEmail: 'owner@delta.example.com',
       });
 
       const updated = await repository.updateStatus(
