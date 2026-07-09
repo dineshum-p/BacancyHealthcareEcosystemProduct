@@ -52,6 +52,20 @@ describe('getAuthConfig', () => {
     expect(() => getAuthConfig()).toThrow(/JWT_ACCESS_SECRET/);
   });
 
+  it('throws in production when JWT_ACCESS_SECRET is an empty string', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_ACCESS_SECRET = '';
+
+    expect(() => getAuthConfig()).toThrow(/JWT_ACCESS_SECRET/);
+  });
+
+  it('throws in production when JWT_ACCESS_SECRET is whitespace-only', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_ACCESS_SECRET = '   ';
+
+    expect(() => getAuthConfig()).toThrow(/JWT_ACCESS_SECRET/);
+  });
+
   it('does not throw in production when a real secret is set', () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_ACCESS_SECRET = 'a-strong-random-production-secret';

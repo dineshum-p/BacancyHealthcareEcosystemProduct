@@ -34,7 +34,9 @@ export function getAuthConfig(): AuthConfig {
   const nodeEnv = process.env.NODE_ENV;
   const secret = process.env.JWT_ACCESS_SECRET;
   const isInsecureDefault =
-    secret === undefined || secret === DEV_INSECURE_ACCESS_SECRET;
+    secret === undefined ||
+    secret.trim() === '' ||
+    secret === DEV_INSECURE_ACCESS_SECRET;
 
   if (isInsecureDefault && !ENVS_ALLOWING_INSECURE_DEFAULT.has(nodeEnv ?? '')) {
     throw new Error(
