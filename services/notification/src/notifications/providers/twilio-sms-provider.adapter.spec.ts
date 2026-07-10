@@ -45,6 +45,22 @@ describe('TwilioSmsProviderAdapter', () => {
     expect(body.get('Body')).toBe('hello there');
   });
 
+  it('wires an AbortSignal (tied to the configured timeout) into the fetch call so a hung request is cancelled at the network layer', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ sid: 'SM123' }),
+    });
+    const adapter = new TwilioSmsProviderAdapter(config, fetchMock, 5000);
+
+    await adapter.send('sms', '+15551234567', { body: 'hello there' });
+
+    const [, init] = fetchMock.mock.calls[0] as [
+      string,
+      { signal?: AbortSignal },
+    ];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('returns a failed outcome when Twilio responds with a non-ok status', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: false,

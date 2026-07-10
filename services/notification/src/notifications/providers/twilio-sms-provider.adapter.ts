@@ -1,4 +1,5 @@
 import type { NotificationChannel } from '@hep/shared-types';
+import { getNotificationConfig } from '../../config/notification.config';
 import type {
   NotificationProviderAdapter,
   ProviderSendOutcome,
@@ -18,6 +19,7 @@ export type FetchLike = (
     method: string;
     headers: Record<string, string>;
     body: string;
+    signal?: AbortSignal;
   },
 ) => Promise<{
   ok: boolean;
@@ -34,12 +36,20 @@ export type FetchLike = (
  * `provider-adapter.module.ts` (this adapter is only wired up when an
  * operator explicitly sets `NOTIFICATION_PROVIDER_MODE=real` with real
  * credentials).
+ *
+ * `timeoutMs` (defaults to `NOTIFICATION_ATTEMPT_TIMEOUT_MS`, the SAME knob
+ * `NotificationDeliveryWorker` races its own timeout against) is wired into
+ * the `fetch()` call's `signal` so a hanging request is actually CANCELLED
+ * at the network layer, not just abandoned while still running in the
+ * background once the worker's own timeout fires.
  */
 export class TwilioSmsProviderAdapter implements NotificationProviderAdapter {
   constructor(
     private readonly config: TwilioConfig,
     private readonly fetchFn: FetchLike = (url, init) =>
       globalThis.fetch(url, init),
+    private readonly timeoutMs: number = getNotificationConfig()
+      .attemptTimeoutMs,
   ) {}
 
   async send(
@@ -65,6 +75,7 @@ export class TwilioSmsProviderAdapter implements NotificationProviderAdapter {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body.toString(),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
       const payload = (await response.json()) as {
         sid?: string;

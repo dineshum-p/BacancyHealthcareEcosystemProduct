@@ -95,7 +95,17 @@ export class NotificationDeliveryWorker {
     });
   }
 
-  /** Normalizes a thrown adapter error into the same `{ outcome: 'failed' }` shape as a returned one. */
+  /**
+   * Normalizes a thrown adapter error into the same `{ outcome: 'failed' }`
+   * shape as a returned one. Also bounds the attempt with
+   * `config.attemptTimeoutMs`: a single hung/never-resolving `send()` call
+   * (real vendor outage, DNS black-hole, etc.) must not be able to freeze
+   * the retry loop forever, so a timeout is raced against the adapter call
+   * and, if it fires first, surfaces as a thrown error -- which this method
+   * ALREADY normalizes into an ordinary `{ outcome: 'failed' }`, so a timed-
+   * out attempt counts toward `attempts`/triggers backoff/retry exactly like
+   * any other transient failure, with no special-cased path.
+   */
   private async attemptSend(
     notification: QueuedNotificationForDelivery,
     content: { subject?: string; body: string },
@@ -104,10 +114,13 @@ export class NotificationDeliveryWorker {
     | { outcome: 'failed'; error: string }
   > {
     try {
-      return await this.providerAdapter.send(
-        notification.channel,
-        notification.to,
-        content,
+      return await this.raceWithTimeout(
+        this.providerAdapter.send(
+          notification.channel,
+          notification.to,
+          content,
+        ),
+        this.config.attemptTimeoutMs,
       );
     } catch (error) {
       return {
@@ -115,5 +128,35 @@ export class NotificationDeliveryWorker {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Races `promise` against a timer of `timeoutMs`, rejecting with a clear,
+   * descriptive error if the timer wins. The timer is always cleared once
+   * `promise` settles (whichever comes first) so no dangling handle is left
+   * behind, and it is `unref()`d so it can never, by itself, keep the Node
+   * process alive.
+   */
+  private raceWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Provider adapter timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      timer.unref?.();
+
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        },
+      );
+    });
   }
 }

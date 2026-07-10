@@ -1,4 +1,5 @@
 import type { NotificationChannel } from '@hep/shared-types';
+import { getNotificationConfig } from '../../config/notification.config';
 import type {
   NotificationProviderAdapter,
   ProviderSendOutcome,
@@ -17,6 +18,7 @@ export type FetchLike = (
     method: string;
     headers: Record<string, string>;
     body: string;
+    signal?: AbortSignal;
   },
 ) => Promise<{
   ok: boolean;
@@ -36,12 +38,20 @@ export type FetchLike = (
  * SendGrid's `mail/send` returns `202 Accepted` with an EMPTY body on
  * success; the provider message id comes back in the `X-Message-Id`
  * response header, not the JSON body.
+ *
+ * `timeoutMs` (defaults to `NOTIFICATION_ATTEMPT_TIMEOUT_MS`, the SAME knob
+ * `NotificationDeliveryWorker` races its own timeout against) is wired into
+ * the `fetch()` call's `signal` so a hanging request is actually CANCELLED
+ * at the network layer, not just abandoned while still running in the
+ * background once the worker's own timeout fires.
  */
 export class SendGridEmailProviderAdapter implements NotificationProviderAdapter {
   constructor(
     private readonly config: SendGridConfig,
     private readonly fetchFn: FetchLike = (url, init) =>
       globalThis.fetch(url, init),
+    private readonly timeoutMs: number = getNotificationConfig()
+      .attemptTimeoutMs,
   ) {}
 
   async send(
@@ -65,6 +75,7 @@ export class SendGridEmailProviderAdapter implements NotificationProviderAdapter
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
 
       if (!response.ok) {

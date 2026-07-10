@@ -76,6 +76,21 @@ externally observable via `GET /notifications/:id`. Backoff between
 attempts is exponential: `NOTIFICATION_BACKOFF_BASE_MS * 2^(attempt-1)`.
 Both are configurable via env, with sane defaults (3 attempts, 200ms base).
 
+Each individual delivery attempt is additionally bounded by
+`NOTIFICATION_ATTEMPT_TIMEOUT_MS` (default 8000ms): `NotificationDeliveryWorker`
+races every `providerAdapter.send()` call against this timeout, so a single
+hung/never-resolving call (real vendor outage, DNS black-hole, etc.) can
+never freeze the retry loop -- a timeout is treated exactly like any other
+transient failure (it counts toward `attempts`, triggers the normal backoff/
+retry, and surfaces as `"Provider adapter timed out after Nms"` if it is the
+last attempt's error), which is what makes the `queued -> failed` guarantee
+above hold even under a hanging vendor call. The real adapters
+(`TwilioSmsProviderAdapter`/`SendGridEmailProviderAdapter`) also pass an
+`AbortSignal.timeout(...)` tied to the same value into their `fetch()` calls,
+so the underlying HTTP request is actually cancelled at the network layer
+too, not just abandoned in the background once the worker's own timeout
+fires.
+
 ### Domain event consumption (AC4) -- scope boundary
 
 `UserRegisteredEventHandler` maps a `user.registered` event

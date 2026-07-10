@@ -31,7 +31,7 @@ const JWT_ACCESS_SECRET = 'e2e-notifications-test-secret';
  * network call, same guarantee as the unit-level fake.
  */
 class ControllableProviderAdapter implements NotificationProviderAdapter {
-  mode: 'always-succeed' | 'always-fail' | 'fail-then-succeed' =
+  mode: 'always-succeed' | 'always-fail' | 'fail-then-succeed' | 'hangs' =
     'always-succeed';
   failCount = 0;
   callCount = 0;
@@ -49,6 +49,12 @@ class ControllableProviderAdapter implements NotificationProviderAdapter {
         outcome: 'failed',
         error: 'Simulated permanent failure.',
       });
+    }
+    if (this.mode === 'hangs') {
+      // Simulates a real vendor outage/DNS black-hole: never settles.
+      // Proves NOTIFICATION_ATTEMPT_TIMEOUT_MS bounds each attempt so the
+      // notification does NOT get stuck at `queued` forever.
+      return new Promise(() => {});
     }
     return Promise.resolve(
       this.callCount <= this.failCount
@@ -92,6 +98,7 @@ describe('Notifications (e2e)', () => {
     process.env.JWT_ACCESS_SECRET = JWT_ACCESS_SECRET;
     process.env.NOTIFICATION_MAX_ATTEMPTS = '3';
     process.env.NOTIFICATION_BACKOFF_BASE_MS = '5';
+    process.env.NOTIFICATION_ATTEMPT_TIMEOUT_MS = '30';
 
     pool = createInMemoryPool();
     await createTenantsTable(pool);
@@ -269,6 +276,34 @@ describe('Notifications (e2e)', () => {
     expect(finalState.status).toBe('failed');
     expect(finalState.attempts).toBe(3);
     expect(finalState.lastError).toContain('Simulated permanent failure.');
+  });
+
+  it('MAJOR fix: a hung/never-resolving provider send() does not stall delivery -- it is bounded by NOTIFICATION_ATTEMPT_TIMEOUT_MS and eventually reaches failed after maxAttempts', async () => {
+    providerAdapter.mode = 'hangs';
+    const token = tokenFor(tenants.tenantA);
+
+    const created = await request(app.getHttpServer())
+      .post('/notifications')
+      .set('X-Tenant-Id', tenants.tenantA.slug)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        channel: 'email',
+        to: 'a@example.com',
+        templateId: 'generic.notice',
+        data: { message: 'hi' },
+      })
+      .expect(201);
+    const { id } = created.body as NotificationResponse;
+
+    const finalState = await waitForTerminalStatus(
+      tenants.tenantA.slug,
+      token,
+      id,
+    );
+
+    expect(finalState.status).toBe('failed');
+    expect(finalState.attempts).toBe(3);
+    expect(finalState.lastError).toContain('timed out');
   });
 
   it('rejects an unknown templateId with 400 before persisting anything', async () => {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NotificationDeliveryWorker } from './notification-delivery.worker';
 import { NotificationsRepository } from '../notifications.repository';
 import { FakeNotificationProviderAdapter } from '../providers/fake-notification-provider.adapter';
+import type { NotificationProviderAdapter } from '../providers/notification-provider-adapter.interface';
 import type { NotificationTemplate } from '../templates/template-registry';
 
 function makeRepository(): jest.Mocked<NotificationsRepository> {
@@ -39,6 +40,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(repository, adapter, {
       maxAttempts: 3,
       backoffBaseMs: 0,
+      attemptTimeoutMs: 5000,
     });
     const notification = makeQueuedNotification();
 
@@ -56,6 +58,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(repository, adapter, {
       maxAttempts: 3,
       backoffBaseMs: 0,
+      attemptTimeoutMs: 5000,
     });
     const notification = makeQueuedNotification();
 
@@ -81,7 +84,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(
       repository,
       adapter,
-      { maxAttempts: 3, backoffBaseMs: 100 },
+      { maxAttempts: 3, backoffBaseMs: 100, attemptTimeoutMs: 5000 },
       sleepFn,
     );
     const notification = makeQueuedNotification();
@@ -111,7 +114,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(
       repository,
       adapter,
-      { maxAttempts: 3, backoffBaseMs: 10 },
+      { maxAttempts: 3, backoffBaseMs: 10, attemptTimeoutMs: 5000 },
       sleepFn,
     );
     const notification = makeQueuedNotification();
@@ -141,6 +144,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(repository, adapter, {
       maxAttempts: 1,
       backoffBaseMs: 0,
+      attemptTimeoutMs: 5000,
     });
     const notification = makeQueuedNotification();
 
@@ -164,6 +168,7 @@ describe('NotificationDeliveryWorker', () => {
     const worker = new NotificationDeliveryWorker(repository, adapter, {
       maxAttempts: 1,
       backoffBaseMs: 0,
+      attemptTimeoutMs: 5000,
     });
     const notification = makeQueuedNotification({
       channel: 'sms',
@@ -178,4 +183,39 @@ describe('NotificationDeliveryWorker', () => {
       body: 'Hi Ada',
     });
   });
+
+  it('MAJOR fix: a hung/never-resolving adapter.send() does not stall the retry loop forever -- it is treated as a normal transient failure, retried per backoff, and eventually reaches failed after maxAttempts', async () => {
+    const repository = makeRepository();
+    /** Simulates a real vendor outage/DNS black-hole: `send()` never settles. */
+    const sendMock = jest
+      .fn<
+        ReturnType<NotificationProviderAdapter['send']>,
+        Parameters<NotificationProviderAdapter['send']>
+      >()
+      .mockReturnValue(new Promise<never>(() => {}));
+    const hangingAdapter: NotificationProviderAdapter = { send: sendMock };
+    const sleepFn = jest.fn().mockResolvedValue(undefined);
+    const worker = new NotificationDeliveryWorker(
+      repository,
+      hangingAdapter,
+      { maxAttempts: 3, backoffBaseMs: 10, attemptTimeoutMs: 20 },
+      sleepFn,
+    );
+    const notification = makeQueuedNotification();
+
+    await worker.deliver(SCHEMA, notification, template);
+
+    expect(sendMock).toHaveBeenCalledTimes(3);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      SCHEMA,
+      notification.id,
+      {
+        lastError: 'Provider adapter timed out after 20ms',
+        attempts: 3,
+      },
+    );
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(repository.markSent).not.toHaveBeenCalled();
+  }, 5000);
 });

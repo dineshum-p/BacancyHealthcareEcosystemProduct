@@ -45,6 +45,27 @@ describe('SendGridEmailProviderAdapter', () => {
     expect(body.content[0]).toEqual({ type: 'text/plain', value: 'World' });
   });
 
+  it('wires an AbortSignal (tied to the configured timeout) into the fetch call so a hung request is cancelled at the network layer', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      headers: { get: () => 'sg-message-id-123' },
+      json: () => Promise.resolve({}),
+    });
+    const adapter = new SendGridEmailProviderAdapter(config, fetchMock, 5000);
+
+    await adapter.send('email', 'user@example.com', {
+      subject: 'Hello',
+      body: 'World',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [
+      string,
+      { signal?: AbortSignal },
+    ];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('returns a failed outcome when SendGrid responds with a non-ok status', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: false,
