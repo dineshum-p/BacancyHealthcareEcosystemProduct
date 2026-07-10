@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from '@nestjs/common';
@@ -38,7 +39,9 @@ export class EventConsumerBootstrapService
 
   constructor(
     private readonly userRegisteredEventHandler: UserRegisteredEventHandler,
+    @Optional()
     private readonly configFactory: () => EventConsumerConfig = getEventConsumerConfig,
+    @Optional()
     private readonly consumerFactory: ConsumerFactory = defaultConsumerFactory,
   ) {}
 

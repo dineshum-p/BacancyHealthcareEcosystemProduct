@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { NotificationChannel } from '@hep/shared-types';
 import { NotificationsRepository } from '../notifications.repository';
 import { renderTemplate } from '../templates/render-template.util';
@@ -47,7 +47,9 @@ export class NotificationDeliveryWorker {
     private readonly notificationsRepository: NotificationsRepository,
     @Inject(NOTIFICATION_PROVIDER_ADAPTER)
     private readonly providerAdapter: NotificationProviderAdapter,
+    @Optional()
     private readonly config: NotificationConfig = getNotificationConfig(),
+    @Optional()
     private readonly sleepFn: (ms: number) => Promise<void> = defaultSleep,
   ) {}
 

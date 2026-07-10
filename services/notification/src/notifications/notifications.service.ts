@@ -82,6 +82,12 @@ export class NotificationsService {
     schemaName: string,
     id: string,
   ): Promise<NotificationResponse> {
+    // A tenant whose schema has never had a notification queued yet has no
+    // `notifications` table at all (lazy provisioning -- see
+    // `NotificationsSchemaProvisioner`); ensure it exists first so a lookup
+    // against a schema with zero notifications 404s (not 500s) the same as
+    // a lookup for an id that simply doesn't exist.
+    await this.schemaProvisioner.ensureProvisioned(schemaName);
     const notification = await this.notificationsRepository.findById(
       schemaName,
       id,

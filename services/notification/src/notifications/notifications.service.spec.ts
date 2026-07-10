@@ -158,6 +158,11 @@ describe('NotificationsService', () => {
         providerMessageId: 'provider-msg-1',
         attempts: 2,
       });
+      // A schema with zero notifications yet has no `notifications` table
+      // at all (lazy provisioning) -- ensure a lookup provisions it first
+      // so it 404s rather than 500s.
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(schemaProvisioner.ensureProvisioned).toHaveBeenCalledWith(SCHEMA);
     });
 
     it('throws NotFoundException when no notification matches the id in this schema', async () => {
