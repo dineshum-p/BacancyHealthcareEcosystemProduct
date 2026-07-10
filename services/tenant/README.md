@@ -130,3 +130,47 @@ DB_HOST=localhost DB_PORT=5544 DB_USER=tenant_service DB_PASSWORD=tenant_service
 in-memory, spec-compliant SQL engine (`pg-mem`) so it can run without a
 docker daemon; the production code path (real `pg` Pool against real
 Postgres) is unchanged and is what `docker-compose.test.yml` exercises.
+
+## Audit logging (BAC-8)
+
+Every write (`POST`/`PUT`/`PATCH`/`DELETE`) is recorded as an append-only
+audit-log entry: actor `userId`, `tenantId` (implicit via the schema it's
+written into), `action`, `resource_type`/`resource_id`, a `before`/`after`
+diff (jsonb), and `created_at`.
+
+- **JWT verification, for the first time in this service** (`src/auth/`):
+  `AccessTokenService` (verify-only -- this service never issues tokens,
+  only `services/auth` does) + `AccessTokenGuard`, reading `{userId,
+  tenantId, role}` claims from a `JWT_ACCESS_SECRET`-signed token. Mirrors
+  `services/auth`'s pattern exactly, including its fail-fast guard against
+  an unset/blank/placeholder secret outside test/development
+  (`src/config/auth.config.ts`) -- both services must be configured with
+  the SAME real secret in any real deployment.
+- **Generic mechanism, not per-resource** (`src/audit-logs/`): a
+  `@Audited(resourceType)` decorator + a global `AuditLogInterceptor`
+  (registered once via `APP_INTERCEPTOR`) derive the semantic action
+  (`create`/`update`/`delete`) from the HTTP method, not from the
+  decorator, so PUT/PATCH/DELETE need no interceptor changes when they're
+  added later. Applied today to the two real mutations that exist
+  (`TenantsController.create()`, `ItemsController.create()`) -- no fake
+  endpoints were added to exercise the other verbs.
+- **Honest before/after for creates**: `before: null`, `after: <created
+  resource>` -- there is no prior state to fabricate. A future
+  PUT/PATCH/DELETE handler can supply a real `before` via
+  `@Audited(type, { resolveBefore })`, which the interceptor already
+  supports (unused today).
+- **Storage**: `TenantSchemaProvisioner.ensureAuditLogsTable` idempotently
+  provisions `<schema>.audit_logs` per tenant (also lazily backfills a
+  schema provisioned before this ticket). `AuditLogsRepository` has no
+  update/delete method -- that omission IS the append-only enforcement
+  (AC2); no DB-level `REVOKE` was added on top, since this codebase has no
+  existing DB-role/grant infrastructure to hang one off cleanly.
+- **`GET /audit-logs`**: paginated (`page`/`limit`), filterable by `actor`
+  (userId), `resourceType`, `resourceId`. Guarded by `TenantGuard` ->
+  `AccessTokenGuard` (401) -> `AuditLogsRoleGuard` (403; `super_admin`/
+  `clinic_admin` only -- a single-purpose guard, deliberately NOT
+  BAC-7's general permission-catalog machinery, which lives in the
+  separately-deployable `services/auth`).
+- `test/audit-logs.e2e-spec.ts` proves every acceptance criterion,
+  including that a mutation performed under one tenant never appears in
+  another tenant's audit query.
