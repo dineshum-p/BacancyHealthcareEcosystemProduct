@@ -269,3 +269,81 @@ export interface PatientCreatedEvent {
   /** ISO-8601 timestamp of creation. */
   createdAt: string;
 }
+
+/**
+ * `services/billing` (BAC-11). The closed set of billable metrics this
+ * service meters. Deliberately a small string-literal union (not an open
+ * `string`) so a typo in a future publisher is caught at compile time --
+ * extend this union (and `services/billing`'s plan-limits map) when a new
+ * billable domain event is added.
+ */
+export type MeteredMetric = 'patient.created' | 'encounter.created';
+
+/**
+ * Payload shape a FUTURE domain-event publisher would produce for a billable
+ * usage event (BAC-11, AC1). Mirrors `UserRegisteredEvent`'s (BAC-9) and
+ * `PatientCreatedEvent`'s (BAC-10) documented-contract-with-no-real-publisher
+ * convention exactly: **no service in this repo publishes this event onto a
+ * real broker today** -- e.g. `services/emr`'s `PatientsService` does not
+ * emit a `patient.created` usage event, and there is no Kafka producer
+ * anywhere in this repo/sandbox wiring one up (see
+ * `services/notification/src/notifications/events/README.md` for the
+ * established scope boundary this ticket follows). This type exists so a
+ * future publisher and `services/billing`'s consumption-side ingestion
+ * method/endpoint have a concrete, shared contract to build against.
+ *
+ * Deliberately carries only a tenant-scoped metric/quantity/timestamp --
+ * NEVER a patient name, MRN, or other identifying detail -- so a usage
+ * record can never itself become a PHI/PII store. See
+ * `services/billing/src/usage/usage-events.repository.ts`'s doc comment for
+ * the full design rationale.
+ */
+export interface MeteredDomainEvent {
+  /**
+   * Idempotency key: the domain event's own id. Recording the SAME
+   * `eventId` twice must not double-count usage (BAC-11, AC3).
+   */
+  eventId: string;
+  tenantId: string;
+  metric: MeteredMetric;
+  /** Number of billable units this single event represents; almost always `1`. */
+  quantity: number;
+  /**
+   * ISO-8601 timestamp of when the underlying domain event occurred (used
+   * to bucket usage into a billing period) -- NOT when it was recorded/
+   * ingested by `services/billing`.
+   */
+  occurredAt: string;
+}
+
+/** One metric's aggregated total for a billing period (BAC-11, AC2/AC4). */
+export interface UsageMetricTotal {
+  metric: MeteredMetric;
+  /** Sum of `quantity` across every non-duplicate recorded event for this metric within the period. */
+  quantity: number;
+  /** The tenant's plan-defined limit for this metric, or `null` if the metric has no configured limit for that plan. */
+  limit: number | null;
+  /** `true` once `quantity` has met or exceeded `limit` (BAC-11, AC4). Always `false` when `limit` is `null`. */
+  limitExceeded: boolean;
+}
+
+/** Response body for `GET /billing/usage` (BAC-11, AC2). */
+export interface UsageSummaryResponse {
+  tenantId: string;
+  /** The billing period this summary covers, `YYYY-MM` (calendar month, UTC). */
+  period: string;
+  metrics: UsageMetricTotal[];
+}
+
+/** Response body for `POST /billing/usage/events` (BAC-11, AC1/AC3). */
+export interface UsageEventResponse {
+  /** Server-assigned internal record id (distinct from `eventId`, the caller-supplied idempotency key). */
+  id: string;
+  eventId: string;
+  tenantId: string;
+  metric: MeteredMetric;
+  quantity: number;
+  occurredAt: string;
+  /** When `services/billing` persisted this record (ingestion time, not `occurredAt`). */
+  recordedAt: string;
+}
