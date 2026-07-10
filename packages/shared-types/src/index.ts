@@ -98,3 +98,72 @@ export interface MfaChallenge {
 
 /** `POST /auth/login`'s response is one of these two shapes (BAC-6, AC3). */
 export type LoginResult = AuthTokens | MfaChallenge;
+
+/**
+ * `services/notification` (BAC-9). Channels a notification can be dispatched
+ * over -- kept deliberately small (no `push`/`webhook`/etc.) to match this
+ * ticket's scope; see that service's `NotificationProviderAdapter` port for
+ * how a channel maps to a concrete SMS/email vendor adapter.
+ */
+export type NotificationChannel = 'sms' | 'email';
+
+/**
+ * Delivery lifecycle for a notification (BAC-9, AC2/AC3): `queued` on
+ * creation (before the async send is attempted), `sent` once the provider
+ * adapter confirms delivery, `failed` only once every retry attempt (with
+ * backoff) has been exhausted.
+ */
+export type NotificationStatus = 'queued' | 'sent' | 'failed';
+
+/** Request body for `POST /notifications` (BAC-9, AC1). */
+export interface CreateNotificationRequest {
+  channel: NotificationChannel;
+  to: string;
+  templateId: string;
+  /**
+   * Values substituted into the named template's `{{variable}}`
+   * placeholders. Deliberately a flat string-keyed record, not `unknown`
+   * nested structures -- see `renderTemplate`'s doc comment for why template
+   * interpolation is treated as untrusted-input-into-output.
+   */
+  data?: Record<string, string>;
+}
+
+/**
+ * Response body for both `POST /notifications` (AC1) and
+ * `GET /notifications/:id` (AC2). `status`/`providerMessageId`/`attempts`/
+ * `lastError` reflect the CURRENT state at the time of the request --
+ * `POST /notifications` returns this immediately with `status: 'queued'`
+ * (delivery, including retries, happens asynchronously; see that service's
+ * README for the full design), while a subsequent `GET` may show `sent` or
+ * `failed`.
+ */
+export interface NotificationResponse {
+  id: string;
+  channel: NotificationChannel;
+  to: string;
+  templateId: string;
+  status: NotificationStatus;
+  providerMessageId: string | null;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Payload shape this service's domain-event consumer expects for a
+ * `user.registered` event (BAC-9, AC4). No service in this repo publishes
+ * this event onto a real broker yet (`services/auth` does not emit it) --
+ * this type documents the CONTRACT the mapping logic
+ * (`UserRegisteredEventHandler`) is written against, so a future publisher
+ * has a concrete shape to produce. See
+ * `services/notification/src/notifications/events/README.md` for the full
+ * scope boundary.
+ */
+export interface UserRegisteredEvent {
+  userId: string;
+  tenantId: string;
+  email: string;
+  name?: string;
+}
