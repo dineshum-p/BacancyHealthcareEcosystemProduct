@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: emr_service
+      POSTGRES_PASSWORD: emr_service
+      POSTGRES_DB: emr_service
+    ports:
+      - '5547:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U emr_service']
+      interval: 2s
+      timeout: 2s
+      retries: 20
