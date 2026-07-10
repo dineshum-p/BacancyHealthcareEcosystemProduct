@@ -11,12 +11,17 @@ export type TenantId = string;
 export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
 
 /**
- * Permissions checked by `services/auth`'s `PermissionsGuard` against the
- * caller's `role` claim (BAC-7). Deliberately minimal -- see
- * `services/auth`'s `permission.enum.ts` for why this is not a larger,
- * speculative catalog.
+ * Permissions checked by `services/auth`'s `PermissionsGuard` (BAC-7) and
+ * `services/emr`'s own copy of the same mechanism (BAC-10) against the
+ * caller's `role` claim. `'read_patient'`/`'write_patient'` were added by
+ * BAC-10 -- see `services/emr`'s `permission.enum.ts` for what each grants
+ * access to.
  */
-export type Permission = 'manage_user_roles' | 'view_users';
+export type Permission =
+  | 'manage_user_roles'
+  | 'view_users'
+  | 'read_patient'
+  | 'write_patient';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -166,4 +171,101 @@ export interface UserRegisteredEvent {
   tenantId: string;
   email: string;
   name?: string;
+}
+
+/**
+ * `services/emr` (BAC-10). A minimal subset of the FHIR R4 `HumanName`
+ * datatype -- just enough to name a `Patient` -- not the full FHIR
+ * specification's element set (e.g. `period`, `prefix`/`suffix` are
+ * deliberately omitted; a future ticket can extend this if a real need
+ * arises).
+ */
+export interface FhirHumanName {
+  use?: string;
+  text?: string;
+  family?: string;
+  given?: string[];
+}
+
+/** FHIR R4 `Identifier` datatype subset (BAC-10), e.g. an MRN or SSN. */
+export interface FhirIdentifier {
+  system?: string;
+  value: string;
+  use?: string;
+}
+
+/** FHIR R4 `ContactPoint` datatype subset (BAC-10), e.g. a phone or email. */
+export interface FhirContactPoint {
+  system?: 'phone' | 'fax' | 'email' | 'pager' | 'url' | 'sms' | 'other';
+  value?: string;
+  use?: string;
+}
+
+/** FHIR R4 `Address` datatype subset (BAC-10). */
+export interface FhirAddress {
+  use?: string;
+  line?: string[];
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
+/**
+ * A FHIR R4 `Patient` resource, as served/accepted by `services/emr`'s
+ * `/fhir/Patient` gateway (BAC-10, AC1/AC2). Deliberately a subset of the
+ * full FHIR R4 `Patient` resource (e.g. no `contact`/`communication`/
+ * `generalPractitioner`/`managingOrganization` -- those are out of this
+ * ticket's scope and can be added by a later ticket without breaking this
+ * contract, since every field here is either required by FHIR itself
+ * (`resourceType`) or additive).
+ */
+export interface FhirPatientResource {
+  resourceType: 'Patient';
+  id?: string;
+  active?: boolean;
+  identifier?: FhirIdentifier[];
+  name?: FhirHumanName[];
+  telecom?: FhirContactPoint[];
+  gender?: 'male' | 'female' | 'other' | 'unknown';
+  birthDate?: string;
+  address?: FhirAddress[];
+}
+
+/**
+ * A FHIR R4 `OperationOutcome` resource (BAC-10, AC3): the shape every
+ * malformed/non-R4-conformant `/fhir/*` request is rejected with instead of
+ * a generic Nest/HTTP error body, so FHIR clients can parse errors the same
+ * way they parse any other FHIR resource.
+ */
+export interface FhirOperationOutcome {
+  resourceType: 'OperationOutcome';
+  issue: FhirOperationOutcomeIssue[];
+}
+
+export interface FhirOperationOutcomeIssue {
+  severity: 'fatal' | 'error' | 'warning' | 'information';
+  /** A FHIR `IssueType` code, e.g. `'invalid'`, `'structure'`, `'required'`. */
+  code: string;
+  diagnostics?: string;
+}
+
+/**
+ * Payload shape a FUTURE domain-event publisher would produce when a FHIR
+ * `Patient` resource is created (BAC-10). Mirrors `UserRegisteredEvent`'s
+ * documented-contract-with-no-real-publisher convention exactly: **no
+ * service in this repo publishes this event onto a real broker today** --
+ * `services/emr`'s `PatientsService` does not emit it, and there is no
+ * Kafka producer anywhere in this repo/sandbox (see
+ * `services/notification/src/notifications/events/README.md` for why no
+ * ticket has wired one up yet). This type exists so a future
+ * publisher/consumer pair has a concrete, shared contract to build against,
+ * per this ticket's explicit instruction not to invent a new event-bus
+ * mechanism where none exists yet.
+ */
+export interface PatientCreatedEvent {
+  patientId: string;
+  tenantId: string;
+  /** ISO-8601 timestamp of creation. */
+  createdAt: string;
 }
