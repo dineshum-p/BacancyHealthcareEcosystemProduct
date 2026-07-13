@@ -24,6 +24,18 @@ const TEMPLATE_REGISTRY: Readonly<Record<string, NotificationTemplate>> = {
   'generic.notice': {
     body: '{{message}}',
   },
+  /**
+   * BAC-12: sent by `services/tenant`'s onboarding orchestration
+   * (`OnboardingService`) via `POST /notifications/internal` once a brand
+   * -new tenant's `clinic_admin` has been seeded. Distinct from
+   * `user.registered.welcome`: that template is for a user who just
+   * self-registered; this one is for an admin who was invited and has not
+   * interacted with anything yet.
+   */
+  'tenant.onboarding.admin-invite': {
+    subject: "You've been invited to administer {{tenantName}} on HEP",
+    body: 'Hi, an administrator account has been created for you ({{email}}) for {{tenantName}}. Contact your Super Admin for next steps to access it.',
+  },
 };
 
 /** Resolves a template by id, or throws `UnknownTemplateError`. */

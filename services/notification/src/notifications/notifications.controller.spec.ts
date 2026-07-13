@@ -63,6 +63,40 @@ describe('NotificationsController', () => {
     });
   });
 
+  describe('createInternal (BAC-12)', () => {
+    it('delegates to the same notificationsService.createForSchema pipeline as create', async () => {
+      const request = makeRequest();
+      const dto = {
+        channel: 'email' as const,
+        to: 'new.admin@example.com',
+        templateId: 'tenant.onboarding.admin-invite',
+        data: { tenantName: 'Acme Inc', email: 'new.admin@example.com' },
+      };
+      const response = {
+        id: 'notif-2',
+        channel: 'email' as const,
+        to: 'new.admin@example.com',
+        templateId: 'tenant.onboarding.admin-invite',
+        status: NotificationStatus.QUEUED,
+        providerMessageId: null,
+        attempts: 0,
+        lastError: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+      notificationsService.createForSchema.mockResolvedValue(response);
+
+      const result = await controller.createInternal(request, dto);
+
+      expect(result).toBe(response);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(notificationsService.createForSchema).toHaveBeenCalledWith(
+        'tenant_acme',
+        dto,
+      );
+    });
+  });
+
   describe('findOne', () => {
     it('delegates to notificationsService.findByIdForSchema with the resolved tenant schema', async () => {
       const request = makeRequest();
