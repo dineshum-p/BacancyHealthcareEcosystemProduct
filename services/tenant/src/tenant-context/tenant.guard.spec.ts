@@ -58,6 +58,8 @@ describe('TenantGuard', () => {
       status: TenantStatus.INACTIVE,
       schemaName: 'tenant_acme',
       ownerEmail: 'owner@acme.example.com',
+      adminSeedStatus: null,
+      inviteStatus: null,
     });
     const request = {
       headers: { 'x-tenant-id': 'acme' },
@@ -78,6 +80,8 @@ describe('TenantGuard', () => {
       status: TenantStatus.PENDING,
       schemaName: 'tenant_acme',
       ownerEmail: 'owner@acme.example.com',
+      adminSeedStatus: null,
+      inviteStatus: null,
     });
     const request = {
       headers: { 'x-tenant-id': 'acme' },
@@ -98,6 +102,8 @@ describe('TenantGuard', () => {
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
       ownerEmail: 'owner@acme.example.com',
+      adminSeedStatus: null,
+      inviteStatus: null,
     };
     tenantsRepository.findByIdentifier.mockResolvedValue(tenant);
     const request = {

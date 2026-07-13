@@ -47,6 +47,13 @@ export class TenantsService {
         status: TenantStatus.PENDING,
         schemaName,
         ownerEmail: dto.ownerEmail,
+        // BAC-12: `null` here means "not applicable" -- only
+        // `OnboardingService` (the `POST /tenants/onboard` orchestration)
+        // ever writes a real provisioning-step outcome, via
+        // `updateProvisioningResult`; the plain `POST /tenants` bootstrap
+        // endpoint (this method) never seeds an admin or sends an invite.
+        adminSeedStatus: null,
+        inviteStatus: null,
       });
     } catch (error) {
       if (error instanceof SlugAlreadyExistsError) {
@@ -71,5 +78,10 @@ export class TenantsService {
       throw new NotFoundException(`Tenant "${id}" was not found.`);
     }
     return tenant;
+  }
+
+  /** BAC-12, AC3: every tenant, for the Super Admin console's tenant-list page. */
+  async findAll(): Promise<Tenant[]> {
+    return this.tenantsRepository.findAll();
   }
 }

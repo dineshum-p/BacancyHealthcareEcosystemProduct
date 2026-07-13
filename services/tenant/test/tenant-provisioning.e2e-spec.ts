@@ -177,6 +177,8 @@ describe('Tenant provisioning (e2e)', () => {
       status: TenantStatus.PENDING,
       schemaName: 'tenant_transition',
       ownerEmail: 'owner@transition.example.com',
+      adminSeedStatus: null,
+      inviteStatus: null,
     });
 
     const whilePending = await request(app.getHttpServer())

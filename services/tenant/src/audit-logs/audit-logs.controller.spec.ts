@@ -17,6 +17,8 @@ describe('AuditLogsController', () => {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
     ownerEmail: 'owner@example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   beforeEach(() => {

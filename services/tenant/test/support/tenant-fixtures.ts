@@ -31,6 +31,8 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_a',
     ownerEmail: 'owner-a@example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   });
   const tenantB = await tenantsRepository.create({
     id: randomUUID(),
@@ -40,6 +42,8 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_b',
     ownerEmail: 'owner-b@example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   });
   const inactiveTenant = await tenantsRepository.create({
     id: randomUUID(),
@@ -49,6 +53,8 @@ export async function seedTestTenants(pool: Pool): Promise<SeededTenants> {
     status: TenantStatus.INACTIVE,
     schemaName: 'tenant_inactive',
     ownerEmail: 'owner-inactive@example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   });
 
   await provisioner.provision(tenantA.schemaName);

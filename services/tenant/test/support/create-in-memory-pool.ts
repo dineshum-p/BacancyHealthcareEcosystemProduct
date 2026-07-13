@@ -24,9 +24,11 @@ export function createInMemoryPool(): Pool {
 /**
  * Bootstraps the `public.tenants` registry table (mirrors the migration DDL,
  * including the BAC-3 `1752019200000_add-tenant-onboarding-fields` follow-up
- * migration -- `name`/`plan` columns and the `pending` status -- and the
+ * migration -- `name`/`plan` columns and the `pending` status -- the
  * BAC-7 `1752105600000_add-tenant-owner-email` follow-up: the nullable
- * `owner_email` column).
+ * `owner_email` column -- and the BAC-12
+ * `1752192000000_add-tenant-provisioning-result` follow-up: the nullable
+ * `admin_seed_status`/`invite_status` columns).
  */
 export async function createTenantsTable(pool: Pool): Promise<void> {
   await pool.query(`
@@ -38,6 +40,8 @@ export async function createTenantsTable(pool: Pool): Promise<void> {
       name TEXT NOT NULL DEFAULT '',
       plan TEXT NOT NULL DEFAULT '',
       owner_email TEXT,
+      admin_seed_status TEXT,
+      invite_status TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);

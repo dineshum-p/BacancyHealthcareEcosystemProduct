@@ -7,6 +7,8 @@ import { TenantsController } from './tenants.controller';
 @Module({
   controllers: [TenantsController],
   providers: [TenantsRepository, TenantSchemaProvisioner, TenantsService],
-  exports: [TenantsRepository, TenantSchemaProvisioner],
+  // BAC-12: `TenantsService` is exported so `OnboardingModule` can reuse its
+  // `create()` provisioning logic (BAC-3) rather than duplicating it.
+  exports: [TenantsRepository, TenantSchemaProvisioner, TenantsService],
 })
 export class TenantsModule {}

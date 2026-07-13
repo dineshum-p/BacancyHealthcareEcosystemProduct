@@ -12,6 +12,8 @@ describe('TenantContextController', () => {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
     ownerEmail: 'owner@acme.example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   const buildController = (): TenantContextController => {
@@ -31,6 +33,8 @@ describe('TenantContextController', () => {
       plan: 'starter',
       status: TenantStatus.ACTIVE,
       schemaName: 'tenant_acme',
+      adminSeedStatus: null,
+      inviteStatus: null,
     });
   });
 

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, QueryResult } from 'pg';
+import type { ProvisioningStepStatus } from '@hep/shared-types';
 import { PG_POOL } from '../database/database.tokens';
 import { Tenant } from './tenant.entity';
 import { TenantStatus } from './tenant-status.enum';
@@ -14,7 +15,12 @@ interface TenantRow {
   name: string;
   plan: string;
   owner_email: string | null;
+  admin_seed_status: string | null;
+  invite_status: string | null;
 }
+
+const TENANT_COLUMNS =
+  'id, slug, status, schema_name, name, plan, owner_email, admin_seed_status, invite_status';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 
@@ -52,7 +58,7 @@ export class TenantsRepository {
    */
   async findByIdentifier(identifier: string): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
-      'SELECT id, slug, status, schema_name, name, plan, owner_email FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1',
+      `SELECT ${TENANT_COLUMNS} FROM public.tenants WHERE id = $1 OR slug = $1 LIMIT 1`,
       [identifier],
     );
     const row = result.rows[0];
@@ -62,11 +68,24 @@ export class TenantsRepository {
   /** Resolves a tenant strictly by id (BAC-3's `GET /tenants/:id`). */
   async findById(id: string): Promise<Tenant | null> {
     const result: QueryResult<TenantRow> = await this.pool.query(
-      'SELECT id, slug, status, schema_name, name, plan, owner_email FROM public.tenants WHERE id = $1 LIMIT 1',
+      `SELECT ${TENANT_COLUMNS} FROM public.tenants WHERE id = $1 LIMIT 1`,
       [id],
     );
     const row = result.rows[0];
     return row ? this.toEntity(row) : null;
+  }
+
+  /**
+   * BAC-12, AC3: every tenant in the registry, newest first, for the Super
+   * Admin console's tenant-list page. No pagination/filtering yet -- out of
+   * this ticket's scope, same minimal-first-cut approach `AuditLogsService`
+   * took before pagination was a real need.
+   */
+  async findAll(): Promise<Tenant[]> {
+    const result: QueryResult<TenantRow> = await this.pool.query(
+      `SELECT ${TENANT_COLUMNS} FROM public.tenants ORDER BY created_at DESC`,
+    );
+    return result.rows.map((row) => this.toEntity(row));
   }
 
   async create(tenant: Tenant): Promise<Tenant> {
@@ -76,9 +95,9 @@ export class TenantsRepository {
     assertSafeSchemaName(tenant.schemaName);
     try {
       const result: QueryResult<TenantRow> = await this.pool.query(
-        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, slug, status, schema_name, name, plan, owner_email`,
+        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email, admin_seed_status, invite_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING ${TENANT_COLUMNS}`,
         [
           tenant.id,
           tenant.slug,
@@ -87,6 +106,8 @@ export class TenantsRepository {
           tenant.name,
           tenant.plan,
           tenant.ownerEmail,
+          tenant.adminSeedStatus,
+          tenant.inviteStatus,
         ],
       );
       return this.toEntity(result.rows[0]);
@@ -112,10 +133,35 @@ export class TenantsRepository {
       `UPDATE public.tenants
        SET status = $2
        WHERE id = $1
-       RETURNING id, slug, status, schema_name, name, plan, owner_email`,
+       RETURNING ${TENANT_COLUMNS}`,
       [id, status],
     );
     const row = result.rows[0];
+    return row ? this.toEntity(row) : null;
+  }
+
+  /**
+   * BAC-12: persists the outcome of the onboarding orchestration's downstream
+   * steps (`OnboardingService`) onto the tenant row, so `GET /tenants`/
+   * `GET /tenants/:id` can report the SAME result later, not just once in
+   * `POST /tenants/onboard`'s immediate response. Returns `null` if no tenant
+   * with that id exists.
+   */
+  async updateProvisioningResult(
+    id: string,
+    result: {
+      adminSeedStatus: ProvisioningStepStatus;
+      inviteStatus: ProvisioningStepStatus;
+    },
+  ): Promise<Tenant | null> {
+    const queryResult: QueryResult<TenantRow> = await this.pool.query(
+      `UPDATE public.tenants
+       SET admin_seed_status = $2, invite_status = $3
+       WHERE id = $1
+       RETURNING ${TENANT_COLUMNS}`,
+      [id, result.adminSeedStatus, result.inviteStatus],
+    );
+    const row = queryResult.rows[0];
     return row ? this.toEntity(row) : null;
   }
 
@@ -128,6 +174,8 @@ export class TenantsRepository {
       status: row.status as TenantStatus,
       schemaName: row.schema_name,
       ownerEmail: row.owner_email,
+      adminSeedStatus: row.admin_seed_status as ProvisioningStepStatus | null,
+      inviteStatus: row.invite_status as ProvisioningStepStatus | null,
     };
   }
 }

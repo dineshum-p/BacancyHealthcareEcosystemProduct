@@ -75,17 +75,31 @@ function isTenantSchemaOwner(
 /**
  * Resolves the mutated resource's id for the audit entry: prefers an `id`
  * field on the response body (both `Tenant`/`TenantResponseDto` and `Item`
- * already expose one), falling back to a `:id` route param -- the shape a
+ * already expose one); BAC-12's `POST /tenants/onboard` response is a
+ * compound orchestration result (`{ tenant, adminSeed, invite }`, not a bare
+ * resource), so a nested `tenant.id` is checked next -- a structural rule
+ * (any response shaped like `{ tenant: { id } }`), not a hardcoded special
+ * case for this one route, so a future compound-response endpoint gets the
+ * same behavior for free. Falls back to a `:id` route param -- the shape a
  * future PUT/PATCH/DELETE handler's request would carry it in.
  */
 export function extractResourceId(
   after: unknown,
   request: RequestWithTenant,
 ): string | null {
-  if (typeof after === 'object' && after !== null && 'id' in after) {
-    const id = (after as Record<string, unknown>).id;
-    if (typeof id === 'string' || typeof id === 'number') {
-      return String(id);
+  if (typeof after === 'object' && after !== null) {
+    const candidate = after as Record<string, unknown>;
+    if ('id' in candidate) {
+      const id = candidate.id;
+      if (typeof id === 'string' || typeof id === 'number') {
+        return String(id);
+      }
+    }
+    if (typeof candidate.tenant === 'object' && candidate.tenant !== null) {
+      const nestedId = (candidate.tenant as Record<string, unknown>).id;
+      if (typeof nestedId === 'string' || typeof nestedId === 'number') {
+        return String(nestedId);
+      }
     }
   }
   const paramsId = (request.params as Record<string, string> | undefined)?.id;

@@ -16,6 +16,8 @@ describe('TenantsController', () => {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
     ownerEmail: 'owner@acme.example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   beforeEach(() => {
@@ -33,6 +35,8 @@ describe('TenantsController', () => {
     plan: 'starter',
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   it('delegates tenant creation to the service', async () => {

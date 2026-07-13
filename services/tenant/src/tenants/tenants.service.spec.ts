@@ -27,14 +27,18 @@ describe('TenantsService', () => {
     status: TenantStatus.PENDING,
     schemaName: 'tenant_acme',
     ownerEmail: 'owner@acme.example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   beforeEach(() => {
     tenantsRepository = {
       findByIdentifier: jest.fn(),
       findById: jest.fn(),
+      findAll: jest.fn(),
       create: jest.fn(),
       updateStatus: jest.fn(),
+      updateProvisioningResult: jest.fn(),
     } as unknown as jest.Mocked<TenantsRepository>;
     schemaProvisioner = {
       provision: jest.fn(),
@@ -63,6 +67,8 @@ describe('TenantsService', () => {
           status: TenantStatus.PENDING,
           schemaName: 'tenant_acme',
           ownerEmail: 'owner@acme.example.com',
+          adminSeedStatus: null,
+          inviteStatus: null,
         }),
       );
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock, `this` binding is irrelevant
@@ -139,6 +145,16 @@ describe('TenantsService', () => {
       await expect(service.findById('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('findAll', () => {
+    it('delegates to the repository (BAC-12, AC3)', async () => {
+      tenantsRepository.findAll.mockResolvedValue([pendingTenant]);
+
+      await expect(service.findAll()).resolves.toEqual([pendingTenant]);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(tenantsRepository.findAll).toHaveBeenCalledWith();
     });
   });
 });

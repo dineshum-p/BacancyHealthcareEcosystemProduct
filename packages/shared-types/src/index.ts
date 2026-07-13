@@ -30,6 +30,19 @@ export interface RoleDefinition {
 }
 
 /**
+ * Request body for `POST /auth/admin-seed` (BAC-12): the internal,
+ * service-to-service counterpart to `POST /auth/register` used by
+ * `services/tenant`'s onboarding orchestration to seed a tenant's first
+ * `clinic_admin` without requiring that admin to already have chosen a
+ * password (an invite flow, not self-service registration). See
+ * `services/auth`'s `AuthController`/`InternalServiceGuard` for why this is
+ * a separate endpoint rather than a reuse of `POST /auth/register`.
+ */
+export interface AdminSeedRequest {
+  email: string;
+}
+
+/**
  * Claims signed into every access-token JWT issued by `services/auth`
  * (BAC-5, AC5). Shared with `apps/web` so the frontend can type-check
  * anything it decodes from a stored access token without redefining the
@@ -346,4 +359,64 @@ export interface UsageEventResponse {
   occurredAt: string;
   /** When `services/billing` persisted this record (ingestion time, not `occurredAt`). */
   recordedAt: string;
+}
+
+/** `services/tenant` (BAC-3/BAC-12). Lifecycle status of a tenant registry row. */
+export type TenantStatus = 'pending' | 'active' | 'inactive';
+
+/**
+ * Outcome of one step of BAC-12's onboarding orchestration
+ * (`POST /tenants/onboard`): `'succeeded'`/`'failed'` reflect a real attempt;
+ * `'skipped'` means a prior step in the chain failed first, so this step was
+ * deliberately never attempted (see `services/tenant`'s `OnboardingService`
+ * doc comment for the full partial-failure policy).
+ */
+export type ProvisioningStepStatus = 'succeeded' | 'failed' | 'skipped';
+
+/**
+ * A tenant as returned by `services/tenant`'s `POST /tenants`,
+ * `GET /tenants/:id`, `GET /tenants` (BAC-3/BAC-4), and `POST /tenants/onboard`
+ * (BAC-12). `adminSeedStatus`/`inviteStatus` are `null` for a tenant that was
+ * never onboarded via `POST /tenants/onboard` (e.g. created via the plain
+ * `POST /tenants` bootstrap endpoint) -- there is no provisioning-result
+ * outcome to report for those. Deliberately omits `ownerEmail` -- see that
+ * service's `tenant-response.dto.ts` for why leaking it on any tenant
+ * -returning response would undermine BAC-7's bootstrap-admin design.
+ */
+export interface TenantSummary {
+  id: string;
+  slug: string;
+  name: string;
+  plan: string;
+  status: TenantStatus;
+  schemaName: string;
+  adminSeedStatus: ProvisioningStepStatus | null;
+  inviteStatus: ProvisioningStepStatus | null;
+}
+
+/**
+ * Request body for `POST /tenants/onboard` (BAC-12, AC1/AC2): a Super Admin
+ * console submission that provisions a brand-new tenant, seeds its first
+ * `clinic_admin` (`adminEmail`), and sends that admin an invite notification,
+ * in one orchestrated call.
+ */
+export interface OnboardTenantRequest {
+  name: string;
+  slug: string;
+  plan: string;
+  adminEmail: string;
+}
+
+/**
+ * Response body for `POST /tenants/onboard` (BAC-12, AC1/AC2/AC3): the
+ * created tenant plus the outcome of each downstream orchestration step, so
+ * the Super Admin console can render the result immediately without a
+ * separate poll, and the same per-step statuses are persisted onto the
+ * tenant row (`TenantSummary.adminSeedStatus`/`inviteStatus`) for the tenant
+ * list page to display later.
+ */
+export interface OnboardTenantResponse {
+  tenant: TenantSummary;
+  adminSeed: { status: ProvisioningStepStatus; message?: string };
+  invite: { status: ProvisioningStepStatus; message?: string };
 }
