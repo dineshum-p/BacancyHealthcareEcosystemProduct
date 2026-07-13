@@ -22,6 +22,7 @@ import type {
 import { TenantGuard } from '../tenant-context/tenant.guard';
 import { AccessTokenGuard } from './access-token.guard';
 import { PermissionsGuard } from './permissions.guard';
+import { InternalServiceGuard } from './internal-service.guard';
 import { RequirePermissions } from './permissions.decorator';
 import { Permission } from './permission.enum';
 import { AuthService } from './auth.service';
@@ -31,6 +32,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { AdminSeedDto } from './dto/admin-seed.dto';
 import type { RequestWithAuth } from './request-with-auth.interface';
 
 /**
@@ -60,6 +62,28 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto): Promise<LoginResult> {
     return this.authService.login(dto);
+  }
+
+  /**
+   * BAC-12: internal, service-to-service counterpart to `register()` --
+   * seeds a `clinic_admin` for the tenant identified by `X-Tenant-Id`,
+   * called ONLY by `services/tenant`'s onboarding orchestration (never by a
+   * browser). Guarded by `TenantGuard` (class-level, resolves + validates
+   * the target tenant like every other route here) plus `InternalServiceGuard`
+   * (a shared-secret check) instead of `AccessTokenGuard`: there is no
+   * end-user bearer token for this flow to check -- the caller authenticated
+   * as a Super Admin against a DIFFERENT tenant entirely (their own), so a
+   * token scoped to that tenant would (correctly) fail `AccessTokenGuard`'s
+   * cross-tenant check if presented here. See `InternalServiceGuard`'s doc
+   * comment for the full trust-boundary rationale, and `AuthService.
+   * seedClinicAdmin`'s doc comment for why this isn't just `register()`
+   * with a role parameter.
+   */
+  @Post('admin-seed')
+  @UseGuards(InternalServiceGuard)
+  @HttpCode(HttpStatus.CREATED)
+  seedClinicAdmin(@Body() dto: AdminSeedDto): Promise<RegisteredUser> {
+    return this.authService.seedClinicAdmin(dto);
   }
 
   @Post('refresh')

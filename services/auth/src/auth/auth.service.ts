@@ -48,6 +48,8 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
+import { AdminSeedDto } from './dto/admin-seed.dto';
+import { generateRandomPassword } from './random-password.util';
 
 /** Uniform message for every credential-related failure (AC3). */
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.';
@@ -149,6 +151,61 @@ export class AuthService {
         email,
         passwordHash,
         role,
+      });
+      return this.toRegisteredUser(user);
+    } catch (error) {
+      if (error instanceof EmailAlreadyExistsError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * BAC-12: seeds a tenant's first `clinic_admin`, called by
+   * `services/tenant`'s `OnboardingService` (`POST /tenants/onboard`'s
+   * orchestration) via `POST /auth/admin-seed` -- NOT a reuse of
+   * `register()`. Two things make `register()` a bad fit for this flow:
+   *
+   *   1. `register()` requires the registrant's own chosen password
+   *      up-front (a self-service flow); an admin-invite flow has no such
+   *      password to collect -- the new clinic_admin has not interacted
+   *      with anything yet.
+   *   2. `register()`'s role assignment is a fixed, tenant-scoped bootstrap
+   *      rule (owner-email match -> `SUPER_ADMIN`, everyone else ->
+   *      `STAFF`); there is no way to make it produce `CLINIC_ADMIN`
+   *      without either overloading that bootstrap rule (weakening its
+   *      security property) or adding an unrelated role parameter to a
+   *      self-service endpoint (letting any anonymous registrant request a
+   *      privileged role).
+   *
+   * `passwordHash` is a securely random, unguessable placeholder
+   * (`generateRandomPassword`) that is never logged, never returned in any
+   * response, and never included in the invite notification -- only its
+   * Argon2 hash is persisted. A password-reset/invite-redemption flow that
+   * would let this account actually log in is explicitly OUT OF SCOPE for
+   * BAC-12 (documented here, not silently omitted -- see
+   * `random-password.util.ts`'s doc comment), mirroring how BAC-6 already
+   * left MFA recovery-code redemption unimplemented for the same reason.
+   *
+   * A duplicate email (e.g. retrying onboarding after a prior partial
+   * failure, or a tenant onboarded with an email that already exists in its
+   * own brand-new schema -- impossible today since every tenant's schema
+   * starts empty, but kept honest for a future re-seed/retry feature)
+   * surfaces as an ordinary 409, same translation `register()` already
+   * does.
+   */
+  async seedClinicAdmin(dto: AdminSeedDto): Promise<RegisteredUser> {
+    await this.ensureSchema();
+    const email = normalizeEmail(dto.email);
+    const passwordHash = await hashPassword(generateRandomPassword());
+
+    try {
+      const user = await this.usersRepository.create({
+        id: randomUUID(),
+        email,
+        passwordHash,
+        role: UserRole.CLINIC_ADMIN,
       });
       return this.toRegisteredUser(user);
     } catch (error) {
