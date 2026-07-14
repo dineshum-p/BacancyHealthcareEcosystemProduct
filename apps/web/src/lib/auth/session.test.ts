@@ -2,14 +2,20 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { AccessTokenPayload } from "@hep/shared-types";
 import {
   ACCESS_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
   clearStoredAccessToken,
+  clearStoredRefreshToken,
   decodeAccessToken,
   getCurrentUser,
   getStoredAccessToken,
+  getStoredRefreshToken,
   setStoredAccessToken,
+  setStoredRefreshToken,
 } from "./session";
 
-function fakeJwt(payload: AccessTokenPayload): string {
+function fakeJwt(
+  payload: AccessTokenPayload & { exp?: number },
+): string {
   const header = base64url({ alg: "HS256", typ: "JWT" });
   const body = base64url(payload);
   return `${header}.${body}.fake-signature`;
@@ -47,6 +53,28 @@ describe("session", () => {
       const token = `header.${Buffer.from("not-json").toString("base64url")}.sig`;
       expect(decodeAccessToken(token)).toBeNull();
     });
+
+    it("decodes the claims from a token whose exp claim is still in the future", () => {
+      const token = fakeJwt({
+        userId: "user-1",
+        tenantId: "tenant-1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      expect(decodeAccessToken(token)?.role).toBe("super_admin");
+    });
+
+    it("returns null for a token whose exp claim has already passed (BAC-13 regression)", () => {
+      const token = fakeJwt({
+        userId: "user-1",
+        tenantId: "tenant-1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) - 60,
+      });
+
+      expect(decodeAccessToken(token)).toBeNull();
+    });
   });
 
   describe("stored access token", () => {
@@ -63,6 +91,35 @@ describe("session", () => {
 
       clearStoredAccessToken();
       expect(getStoredAccessToken()).toBeNull();
+    });
+  });
+
+  describe("stored refresh token (BAC-13)", () => {
+    it("returns null when nothing is stored", () => {
+      expect(getStoredRefreshToken()).toBeNull();
+    });
+
+    it("round-trips a token through set/get/clear", () => {
+      setStoredRefreshToken("refresh-abc");
+      expect(getStoredRefreshToken()).toBe("refresh-abc");
+      expect(window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBe(
+        "refresh-abc",
+      );
+
+      clearStoredRefreshToken();
+      expect(getStoredRefreshToken()).toBeNull();
+    });
+
+    it("stores the refresh token separately from the access token", () => {
+      setStoredAccessToken("access-token");
+      setStoredRefreshToken("refresh-token");
+
+      expect(getStoredAccessToken()).toBe("access-token");
+      expect(getStoredRefreshToken()).toBe("refresh-token");
+
+      clearStoredAccessToken();
+      expect(getStoredAccessToken()).toBeNull();
+      expect(getStoredRefreshToken()).toBe("refresh-token");
     });
   });
 

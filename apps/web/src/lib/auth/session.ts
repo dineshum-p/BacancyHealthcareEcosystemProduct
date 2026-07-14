@@ -38,10 +38,71 @@ export function clearStoredAccessToken(): void {
 }
 
 /**
+ * BAC-13: `POST /auth/login` / `POST /auth/mfa/login-verify` return a
+ * refresh token (`AuthTokens.refreshToken`) alongside the access token, in
+ * the same JSON response body -- there is no server-set httpOnly cookie for
+ * this app to rely on instead (that would require a backend-for-frontend
+ * layer, out of scope for this ticket). It is stored the exact same way as
+ * the access token above, under its own key, for the same accepted-risk
+ * reason spelled out in this module's top doc comment: `services/auth`'s
+ * `POST /auth/refresh` independently verifies it server-side (a hashed
+ * lookup against `refresh_tokens`, checking revocation/expiry -- BAC-5,
+ * AC4) before ever honoring it, so holding the raw value in `localStorage`
+ * grants no client-side authority by itself, exactly like the access token.
+ * Nothing in this ticket's scope reads or decodes it client-side -- it is
+ * opaque here, only ever forwarded verbatim to `POST /auth/refresh`.
+ */
+export const REFRESH_TOKEN_STORAGE_KEY = "hep.refreshToken";
+
+export function getStoredRefreshToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+export function setStoredRefreshToken(token: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+}
+
+export function clearStoredRefreshToken(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Standard JWT `exp` claim (seconds since epoch), which every access token
+ * `services/auth`'s `AccessTokenService.sign` issues carries (via
+ * `JwtService.sign`'s `expiresIn` option) even though it isn't part of the
+ * shared `AccessTokenPayload` contract -- that type only lists the claims
+ * `apps/web` actually reads for UI decisions today. Decoded here as a
+ * loosely-typed sibling of the payload rather than added to
+ * `AccessTokenPayload` itself, so callers who only need `userId`/`tenantId`/
+ * `role` don't have to deal with an optional `exp` they never asked for.
+ */
+interface DecodableJwtClaims {
+  exp?: number;
+}
+
+function isExpired(claims: DecodableJwtClaims): boolean {
+  return typeof claims.exp === "number" && Date.now() >= claims.exp * 1000;
+}
+
+/**
  * Decodes (but does NOT verify) a JWT's payload segment. Returns `null` for
  * anything that isn't a well-formed `header.payload.signature` token with a
- * JSON payload -- callers must treat that as "no usable session", never
- * throw.
+ * JSON payload, AND for a token whose `exp` claim has already passed --
+ * callers must treat both cases as "no usable session", never throw. An
+ * expired-but-decodable token is a normal real-world case (not just a test
+ * artifact): without this check, `useCurrentUser`/`RequireRole` would treat a
+ * caller whose session has simply timed out as still "signed in", and
+ * `LoginPage`'s AC4 already-authenticated guard would bounce them away from
+ * `/login` with no way to get back to a real sign-in form.
  */
 export function decodeAccessToken(token: string): AccessTokenPayload | null {
   const segments = token.split(".");
@@ -51,7 +112,11 @@ export function decodeAccessToken(token: string): AccessTokenPayload | null {
 
   try {
     const json = decodeBase64Url(segments[1]);
-    return JSON.parse(json) as AccessTokenPayload;
+    const claims = JSON.parse(json) as AccessTokenPayload & DecodableJwtClaims;
+    if (isExpired(claims)) {
+      return null;
+    }
+    return claims;
   } catch {
     return null;
   }
