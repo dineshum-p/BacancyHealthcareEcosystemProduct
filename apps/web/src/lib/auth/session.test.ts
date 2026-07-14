@@ -2,11 +2,15 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { AccessTokenPayload } from "@hep/shared-types";
 import {
   ACCESS_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
   clearStoredAccessToken,
+  clearStoredRefreshToken,
   decodeAccessToken,
   getCurrentUser,
   getStoredAccessToken,
+  getStoredRefreshToken,
   setStoredAccessToken,
+  setStoredRefreshToken,
 } from "./session";
 
 function fakeJwt(payload: AccessTokenPayload): string {
@@ -63,6 +67,35 @@ describe("session", () => {
 
       clearStoredAccessToken();
       expect(getStoredAccessToken()).toBeNull();
+    });
+  });
+
+  describe("stored refresh token (BAC-13)", () => {
+    it("returns null when nothing is stored", () => {
+      expect(getStoredRefreshToken()).toBeNull();
+    });
+
+    it("round-trips a token through set/get/clear", () => {
+      setStoredRefreshToken("refresh-abc");
+      expect(getStoredRefreshToken()).toBe("refresh-abc");
+      expect(window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBe(
+        "refresh-abc",
+      );
+
+      clearStoredRefreshToken();
+      expect(getStoredRefreshToken()).toBeNull();
+    });
+
+    it("stores the refresh token separately from the access token", () => {
+      setStoredAccessToken("access-token");
+      setStoredRefreshToken("refresh-token");
+
+      expect(getStoredAccessToken()).toBe("access-token");
+      expect(getStoredRefreshToken()).toBe("refresh-token");
+
+      clearStoredAccessToken();
+      expect(getStoredAccessToken()).toBeNull();
+      expect(getStoredRefreshToken()).toBe("refresh-token");
     });
   });
 

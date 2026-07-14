@@ -38,6 +38,44 @@ export function clearStoredAccessToken(): void {
 }
 
 /**
+ * BAC-13: `POST /auth/login` / `POST /auth/mfa/login-verify` return a
+ * refresh token (`AuthTokens.refreshToken`) alongside the access token, in
+ * the same JSON response body -- there is no server-set httpOnly cookie for
+ * this app to rely on instead (that would require a backend-for-frontend
+ * layer, out of scope for this ticket). It is stored the exact same way as
+ * the access token above, under its own key, for the same accepted-risk
+ * reason spelled out in this module's top doc comment: `services/auth`'s
+ * `POST /auth/refresh` independently verifies it server-side (a hashed
+ * lookup against `refresh_tokens`, checking revocation/expiry -- BAC-5,
+ * AC4) before ever honoring it, so holding the raw value in `localStorage`
+ * grants no client-side authority by itself, exactly like the access token.
+ * Nothing in this ticket's scope reads or decodes it client-side -- it is
+ * opaque here, only ever forwarded verbatim to `POST /auth/refresh`.
+ */
+export const REFRESH_TOKEN_STORAGE_KEY = "hep.refreshToken";
+
+export function getStoredRefreshToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+export function setStoredRefreshToken(token: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+}
+
+export function clearStoredRefreshToken(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+/**
  * Decodes (but does NOT verify) a JWT's payload segment. Returns `null` for
  * anything that isn't a well-formed `header.payload.signature` token with a
  * JSON payload -- callers must treat that as "no usable session", never
