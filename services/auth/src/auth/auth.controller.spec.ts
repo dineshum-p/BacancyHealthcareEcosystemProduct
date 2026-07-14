@@ -24,6 +24,7 @@ describe('AuthController', () => {
       completeMfaLogin: jest.fn(),
       listRoles: jest.fn(),
       updateUserRole: jest.fn(),
+      seedClinicAdmin: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
     controller = new AuthController(service);
   });
@@ -166,5 +167,20 @@ describe('AuthController', () => {
       'user-2',
       UserRole.CLINIC_ADMIN,
     );
+  });
+
+  it('delegates POST /auth/admin-seed to the service (BAC-12)', async () => {
+    const dto = { email: 'new.admin@example.com' };
+    const seeded: RegisteredUser = {
+      id: 'user-3',
+      email: 'new.admin@example.com',
+      role: UserRole.CLINIC_ADMIN,
+      createdAt: new Date().toISOString(),
+    };
+    service.seedClinicAdmin.mockResolvedValue(seeded);
+
+    await expect(controller.seedClinicAdmin(dto)).resolves.toBe(seeded);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.seedClinicAdmin).toHaveBeenCalledWith(dto);
   });
 });

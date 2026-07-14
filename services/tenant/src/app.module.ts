@@ -4,6 +4,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { TenantContextModule } from './tenant-context/tenant-context.module';
 import { ItemsModule } from './items/items.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
     TenantContextModule,
     ItemsModule,
     AuditLogsModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

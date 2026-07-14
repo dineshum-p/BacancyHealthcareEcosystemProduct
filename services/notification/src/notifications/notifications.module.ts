@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TenantContextModule } from '../tenant-context/tenant-context.module';
 import { AuthModule } from '../auth/auth.module';
+import { InternalServiceGuard } from '../auth/internal-service.guard';
 import { ProviderAdapterModule } from './providers/provider-adapter.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
@@ -29,6 +30,7 @@ import { NotificationDeliveryWorker } from './delivery/notification-delivery.wor
     NotificationsRepository,
     NotificationsSchemaProvisioner,
     NotificationDeliveryWorker,
+    InternalServiceGuard,
   ],
   exports: [
     NotificationsService,

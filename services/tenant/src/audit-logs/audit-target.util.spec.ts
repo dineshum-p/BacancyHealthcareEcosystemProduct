@@ -31,6 +31,8 @@ describe('resolveAuditTarget', () => {
     status: TenantStatus.ACTIVE,
     schemaName: 'tenant_acme',
     ownerEmail: 'owner@example.com',
+    adminSeedStatus: null,
+    inviteStatus: null,
   };
 
   it('uses request.tenant when TenantGuard already resolved one (e.g. POST /items)', () => {
@@ -92,5 +94,21 @@ describe('extractResourceId', () => {
     expect(extractResourceId(null, request)).toBeNull();
     expect(extractResourceId(undefined, request)).toBeNull();
     expect(extractResourceId({ name: 'no id here' }, request)).toBeNull();
+  });
+
+  it('falls back to a nested tenant.id for a compound orchestration response (BAC-12, POST /tenants/onboard)', () => {
+    const request = {} as unknown as RequestWithTenant;
+    const after = {
+      tenant: { id: 'tenant-3', slug: 'gamma' },
+      adminSeed: { status: 'succeeded' },
+      invite: { status: 'succeeded' },
+    };
+    expect(extractResourceId(after, request)).toBe('tenant-3');
+  });
+
+  it('prefers a top-level id over a nested tenant.id when both are present', () => {
+    const request = {} as unknown as RequestWithTenant;
+    const after = { id: 'top-level', tenant: { id: 'nested' } };
+    expect(extractResourceId(after, request)).toBe('top-level');
   });
 });

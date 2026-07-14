@@ -32,6 +32,8 @@ const tenant = {
   status: TenantStatus.ACTIVE,
   schemaName: 'tenant_acme',
   ownerEmail: 'owner@example.com',
+  adminSeedStatus: null,
+  inviteStatus: null,
 };
 
 describe('AuditLogInterceptor', () => {

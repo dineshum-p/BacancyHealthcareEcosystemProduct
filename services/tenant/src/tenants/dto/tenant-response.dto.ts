@@ -1,3 +1,4 @@
+import type { ProvisioningStepStatus } from '@hep/shared-types';
 import { Tenant } from '../tenant.entity';
 import { TenantStatus } from '../tenant-status.enum';
 
@@ -35,6 +36,15 @@ export interface TenantResponseDto {
   plan: string;
   status: TenantStatus;
   schemaName: string;
+  /**
+   * BAC-12: outcome of `OnboardingService` seeding this tenant's first
+   * `clinic_admin`, or `null` if this tenant was never onboarded via
+   * `POST /tenants/onboard`. Safe to expose (unlike `ownerEmail`): it carries
+   * no secret, just a provisioning-result label.
+   */
+  adminSeedStatus: ProvisioningStepStatus | null;
+  /** BAC-12: outcome of queuing the admin's invite notification; same `null` convention as `adminSeedStatus`. */
+  inviteStatus: ProvisioningStepStatus | null;
 }
 
 export function toTenantResponseDto(tenant: Tenant): TenantResponseDto {
@@ -45,5 +55,7 @@ export function toTenantResponseDto(tenant: Tenant): TenantResponseDto {
     plan: tenant.plan,
     status: tenant.status,
     schemaName: tenant.schemaName,
+    adminSeedStatus: tenant.adminSeedStatus,
+    inviteStatus: tenant.inviteStatus,
   };
 }

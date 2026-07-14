@@ -1,3 +1,4 @@
+import type { ProvisioningStepStatus } from '@hep/shared-types';
 import { TenantStatus } from './tenant-status.enum';
 
 /**
@@ -22,4 +23,17 @@ export interface Tenant {
    * every tenant created via `CreateTenantDto` from now on always has one.
    */
   ownerEmail: string | null;
+  /**
+   * BAC-12: outcome of `OnboardingService` seeding this tenant's first
+   * `clinic_admin` via `services/auth`. `null` for a tenant not created via
+   * `POST /tenants/onboard` (see the
+   * `1752192000000_add-tenant-provisioning-result` migration).
+   */
+  adminSeedStatus: ProvisioningStepStatus | null;
+  /**
+   * BAC-12: outcome of `OnboardingService` queuing the admin's invite
+   * notification via `services/notification`. `null` for the same reason as
+   * `adminSeedStatus`.
+   */
+  inviteStatus: ProvisioningStepStatus | null;
 }

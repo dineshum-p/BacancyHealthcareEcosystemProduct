@@ -269,6 +269,82 @@ describe('AuthService', () => {
     });
   });
 
+  describe('seedClinicAdmin (BAC-12)', () => {
+    const dto = { email: 'New.Admin@Example.com' };
+
+    it('provisions the tenant schema before creating the user', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.seedClinicAdmin(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(authSchemaProvisioner.ensureProvisioned).toHaveBeenCalledWith(
+        'tenant_acme',
+      );
+    });
+
+    it('normalizes the email and always assigns the clinic_admin role', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      const result = await service.seedClinicAdmin(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new.admin@example.com',
+          role: UserRole.CLINIC_ADMIN,
+        }),
+      );
+      expect(result).toMatchObject({
+        email: 'new.admin@example.com',
+        role: UserRole.CLINIC_ADMIN,
+      });
+    });
+
+    it('stores an argon2 hash of a securely random password, never a caller-supplied one', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.seedClinicAdmin(dto);
+
+      const [createArg] = usersRepository.create.mock.calls[0];
+      expect(createArg.passwordHash.startsWith('$argon2')).toBe(true);
+    });
+
+    it('never returns the password hash', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      const result = await service.seedClinicAdmin(dto);
+
+      expect(result).not.toHaveProperty('passwordHash');
+    });
+
+    it('translates a duplicate email into ConflictException (409)', async () => {
+      usersRepository.create.mockRejectedValue(
+        new EmailAlreadyExistsError('new.admin@example.com'),
+      );
+
+      await expect(service.seedClinicAdmin(dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('propagates unrelated repository errors unchanged', async () => {
+      usersRepository.create.mockRejectedValue(new Error('db unreachable'));
+
+      await expect(service.seedClinicAdmin(dto)).rejects.toThrow(
+        'db unreachable',
+      );
+    });
+  });
+
   describe('listRoles (AC1)', () => {
     it('returns all four seeded roles with their permission sets', () => {
       const roles = service.listRoles();

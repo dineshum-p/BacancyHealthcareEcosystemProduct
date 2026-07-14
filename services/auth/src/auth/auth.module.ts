@@ -10,6 +10,7 @@ import { MfaRecoveryCodesRepository } from './mfa-recovery-codes.repository';
 import { AccessTokenService } from './access-token.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { PermissionsGuard } from './permissions.guard';
+import { InternalServiceGuard } from './internal-service.guard';
 import { MfaChallengeTokenService } from './mfa-challenge-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 
@@ -31,6 +32,7 @@ import { AuthSchemaProvisioner } from './auth-schema.provisioner';
     AccessTokenService,
     AccessTokenGuard,
     PermissionsGuard,
+    InternalServiceGuard,
     MfaChallengeTokenService,
     AuthSchemaProvisioner,
   ],
