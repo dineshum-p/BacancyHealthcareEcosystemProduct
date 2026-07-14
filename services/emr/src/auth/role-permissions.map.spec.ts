@@ -42,6 +42,28 @@ describe('role-permissions.map', () => {
   it('getPermissionsForRole returns the exact permission set for a role', () => {
     expect(getPermissionsForRole(UserRole.STAFF)).toEqual([
       Permission.READ_PATIENT,
+      Permission.READ_ENCOUNTER,
     ]);
+  });
+
+  it('grants READ_ENCOUNTER to every role (BAC-15, AC2)', () => {
+    for (const role of Object.values(UserRole)) {
+      expect(roleHasPermission(role, Permission.READ_ENCOUNTER)).toBe(true);
+    }
+  });
+
+  it('grants WRITE_ENCOUNTER to super_admin, clinic_admin, and provider, but not staff (BAC-15, AC1)', () => {
+    expect(
+      roleHasPermission(UserRole.SUPER_ADMIN, Permission.WRITE_ENCOUNTER),
+    ).toBe(true);
+    expect(
+      roleHasPermission(UserRole.CLINIC_ADMIN, Permission.WRITE_ENCOUNTER),
+    ).toBe(true);
+    expect(
+      roleHasPermission(UserRole.PROVIDER, Permission.WRITE_ENCOUNTER),
+    ).toBe(true);
+    expect(roleHasPermission(UserRole.STAFF, Permission.WRITE_ENCOUNTER)).toBe(
+      false,
+    );
   });
 });
