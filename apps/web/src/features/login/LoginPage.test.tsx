@@ -100,6 +100,24 @@ describe("LoginPage", () => {
     expect(screen.queryByLabelText(/workspace/i)).not.toBeInTheDocument();
   });
 
+  it("treats a caller whose stored token has expired as unauthenticated and shows the login form (AC4 regression, BAC-13)", () => {
+    setStoredAccessToken(
+      fakeJwt({
+        userId: "u1",
+        tenantId: "t1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) - 60,
+      }),
+    );
+    mockUseLogin({});
+    mockUseVerifyMfaLogin({});
+
+    render(<LoginPage />);
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/workspace/i)).toBeInTheDocument();
+  });
+
   describe("as an unauthenticated caller", () => {
     it("submits credentials to the login mutation (AC1)", async () => {
       const user = userEvent.setup();

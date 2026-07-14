@@ -13,7 +13,9 @@ import {
   setStoredRefreshToken,
 } from "./session";
 
-function fakeJwt(payload: AccessTokenPayload): string {
+function fakeJwt(
+  payload: AccessTokenPayload & { exp?: number },
+): string {
   const header = base64url({ alg: "HS256", typ: "JWT" });
   const body = base64url(payload);
   return `${header}.${body}.fake-signature`;
@@ -49,6 +51,28 @@ describe("session", () => {
 
     it("returns null for a token whose payload segment isn't valid JSON", () => {
       const token = `header.${Buffer.from("not-json").toString("base64url")}.sig`;
+      expect(decodeAccessToken(token)).toBeNull();
+    });
+
+    it("decodes the claims from a token whose exp claim is still in the future", () => {
+      const token = fakeJwt({
+        userId: "user-1",
+        tenantId: "tenant-1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      expect(decodeAccessToken(token)?.role).toBe("super_admin");
+    });
+
+    it("returns null for a token whose exp claim has already passed (BAC-13 regression)", () => {
+      const token = fakeJwt({
+        userId: "user-1",
+        tenantId: "tenant-1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) - 60,
+      });
+
       expect(decodeAccessToken(token)).toBeNull();
     });
   });

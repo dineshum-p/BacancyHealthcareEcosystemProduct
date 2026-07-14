@@ -33,4 +33,18 @@ describe("useCurrentUser", () => {
     render(<Probe />);
     expect(await screen.findByText("role:super_admin")).toBeInTheDocument();
   });
+
+  it("resolves to anonymous when the stored token is expired (BAC-13 regression)", async () => {
+    setStoredAccessToken(
+      fakeJwt({
+        userId: "u1",
+        tenantId: "t1",
+        role: "super_admin",
+        exp: Math.floor(Date.now() / 1000) - 60,
+      }),
+    );
+
+    render(<Probe />);
+    expect(await screen.findByText("anonymous")).toBeInTheDocument();
+  });
 });

@@ -76,10 +76,33 @@ export function clearStoredRefreshToken(): void {
 }
 
 /**
+ * Standard JWT `exp` claim (seconds since epoch), which every access token
+ * `services/auth`'s `AccessTokenService.sign` issues carries (via
+ * `JwtService.sign`'s `expiresIn` option) even though it isn't part of the
+ * shared `AccessTokenPayload` contract -- that type only lists the claims
+ * `apps/web` actually reads for UI decisions today. Decoded here as a
+ * loosely-typed sibling of the payload rather than added to
+ * `AccessTokenPayload` itself, so callers who only need `userId`/`tenantId`/
+ * `role` don't have to deal with an optional `exp` they never asked for.
+ */
+interface DecodableJwtClaims {
+  exp?: number;
+}
+
+function isExpired(claims: DecodableJwtClaims): boolean {
+  return typeof claims.exp === "number" && Date.now() >= claims.exp * 1000;
+}
+
+/**
  * Decodes (but does NOT verify) a JWT's payload segment. Returns `null` for
  * anything that isn't a well-formed `header.payload.signature` token with a
- * JSON payload -- callers must treat that as "no usable session", never
- * throw.
+ * JSON payload, AND for a token whose `exp` claim has already passed --
+ * callers must treat both cases as "no usable session", never throw. An
+ * expired-but-decodable token is a normal real-world case (not just a test
+ * artifact): without this check, `useCurrentUser`/`RequireRole` would treat a
+ * caller whose session has simply timed out as still "signed in", and
+ * `LoginPage`'s AC4 already-authenticated guard would bounce them away from
+ * `/login` with no way to get back to a real sign-in form.
  */
 export function decodeAccessToken(token: string): AccessTokenPayload | null {
   const segments = token.split(".");
@@ -89,7 +112,11 @@ export function decodeAccessToken(token: string): AccessTokenPayload | null {
 
   try {
     const json = decodeBase64Url(segments[1]);
-    return JSON.parse(json) as AccessTokenPayload;
+    const claims = JSON.parse(json) as AccessTokenPayload & DecodableJwtClaims;
+    if (isExpired(claims)) {
+      return null;
+    }
+    return claims;
   } catch {
     return null;
   }
