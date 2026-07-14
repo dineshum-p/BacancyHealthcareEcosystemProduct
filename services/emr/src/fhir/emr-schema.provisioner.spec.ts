@@ -41,6 +41,59 @@ describe('EmrSchemaProvisioner', () => {
     });
   });
 
+  describe('ensureEncountersTable', () => {
+    it('creates an encounters table storing SOAP fields, vitals, and a JSONB allergies list', async () => {
+      await provisioner.ensureEncountersTable('tenant_acme');
+
+      await pool.query(
+        `INSERT INTO "tenant_acme".encounters
+           (id, patient_id, subjective, objective, assessment, plan,
+            heart_rate, blood_pressure_systolic, blood_pressure_diastolic,
+            temperature, respiratory_rate, spo2, allergies)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [
+          '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222',
+          'Feels dizzy',
+          'BP elevated',
+          'Hypertension',
+          'Start medication',
+          80,
+          120,
+          80,
+          37,
+          16,
+          98,
+          JSON.stringify([{ substance: 'Penicillin', severity: 'severe' }]),
+        ],
+      );
+      const result = await pool.query(
+        'SELECT patient_id, subjective, allergies FROM "tenant_acme".encounters',
+      );
+
+      expect(result.rows).toEqual([
+        {
+          patient_id: '22222222-2222-2222-2222-222222222222',
+          subjective: 'Feels dizzy',
+          allergies: [{ substance: 'Penicillin', severity: 'severe' }],
+        },
+      ]);
+    });
+
+    it('is idempotent when called twice for the same schema', async () => {
+      await provisioner.ensureEncountersTable('tenant_acme');
+      await expect(
+        provisioner.ensureEncountersTable('tenant_acme'),
+      ).resolves.not.toThrow();
+    });
+
+    it('rejects unsafe schema names', async () => {
+      await expect(
+        provisioner.ensureEncountersTable('bad; drop table x;'),
+      ).rejects.toThrow();
+    });
+  });
+
   describe('ensureAuditLogsTable', () => {
     it('creates an append-only audit_logs table', async () => {
       await provisioner.ensureAuditLogsTable('tenant_acme');
