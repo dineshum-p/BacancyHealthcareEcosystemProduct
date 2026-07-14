@@ -16,6 +16,7 @@
     "affected": "turbo run typecheck lint test --filter=...[origin/main]",
     "auto": "node orchestrator.mjs",
     "auto:supervised": "MODE=supervised node orchestrator.mjs",
-    "auto:one": "MAX_TICKETS=1 MODE=supervised node orchestrator.mjs"
+    "auto:one": "MAX_TICKETS=1 MODE=supervised node orchestrator.mjs",
+    "dev:e2e-stack": "cd services/tenant && npx ts-node --project tsconfig.json --transpile-only ../../scripts/dev-e2e-stack.ts"
   }
 }
