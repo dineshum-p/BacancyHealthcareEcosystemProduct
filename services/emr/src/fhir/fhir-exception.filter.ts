@@ -16,9 +16,13 @@ import {
  * `TenantGuard`/`AccessTokenGuard`/`PermissionsGuard`, or by application
  * code) into a FHIR R4 `OperationOutcome` response body, instead of Nest's
  * generic `{ statusCode, message, error }` shape (BAC-10, AC3). Registered
- * globally in `main.ts` (`app.useGlobalFilters(...)`) so this applies
- * uniformly across every route in this service -- there are no non-FHIR
- * routes in `services/emr` for it to accidentally shadow.
+ * globally in `main.ts` (`app.useGlobalFilters(...)`), so this ALSO applies
+ * to BAC-15's plain-REST `/patients/:patientId/encounters` routes (added
+ * after this filter's original "no non-FHIR routes" doc comment was
+ * written): an error from those routes is still rendered as a FHIR
+ * `OperationOutcome` body -- acceptable since no acceptance criterion in
+ * either ticket depends on the error body's exact shape for those routes,
+ * only on the HTTP status code.
  */
 @Catch(HttpException)
 export class FhirExceptionFilter implements ExceptionFilter {

@@ -4,6 +4,7 @@ import { TenantContextModule } from './tenant-context/tenant-context.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { PatientsModule } from './fhir/patients.module';
+import { EncountersModule } from './encounters/encounters.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { PatientsModule } from './fhir/patients.module';
     AuthModule,
     AuditLogsModule,
     PatientsModule,
+    EncountersModule,
   ],
 })
 export class AppModule {}
