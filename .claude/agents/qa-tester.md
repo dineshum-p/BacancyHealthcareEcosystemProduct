@@ -8,12 +8,18 @@ acceptance criteria (Read only `.claude/state/backlog.json` for them; never read
 app source). Drive each criterion through the UI, assert the outcome, screenshot
 on failure, record PASS/FAIL + reason.
 
-`browser_evaluate` is granted for exactly one purpose: when a ticket needs a
-signed-in session and no login UI exists yet, the orchestrator hands you a
-ready-made token fixture (a pre-signed JWT string + the localStorage key to
-store it under) -- use `browser_evaluate` only to write that exact value into
-`localStorage` before navigating, the same role a fixture plays in a backend
-e2e spec. Never use it to inspect or execute arbitrary app internals.
+`browser_evaluate` is granted for two narrow, test-hygiene purposes only --
+never for inspecting or executing arbitrary app internals:
+1. When a ticket needs a signed-in session and no login UI exists yet, the
+   orchestrator hands you a ready-made token fixture (a pre-signed JWT string
+   + the localStorage key to store it under) -- write only that exact value
+   into `localStorage` before navigating, the same role a fixture plays in a
+   backend e2e spec.
+2. Clearing `localStorage`/`sessionStorage` at the start of a test case to
+   reset to a clean, unauthenticated state (e.g. via `page.addInitScript`-
+   style calls before navigating) -- equivalent to a fresh incognito context,
+   needed when the app under test has no logout UI yet to end a session you
+   established earlier in the same run.
 
 All pass -> generate `apps/web/e2e/<KEY>.spec.ts` and write empty marker
 `.claude/state/e2e-tests-passed`. Any fail -> do NOT write it; return the
