@@ -11,6 +11,7 @@ import {
 } from '../services/tenant/test/support/create-in-memory-pool';
 import { AppModule as TenantAppModule } from '../services/tenant/src/app.module';
 import { PG_POOL as TENANT_PG_POOL } from '../services/tenant/src/database/database.tokens';
+import { getCorsConfig } from '../services/tenant/src/config/cors.config';
 import { AppModule as AuthAppModule } from '../services/auth/src/app.module';
 import { PG_POOL as AUTH_PG_POOL } from '../services/auth/src/database/database.tokens';
 import { AppModule as NotificationAppModule } from '../services/notification/src/app.module';
@@ -44,6 +45,7 @@ async function bootTenant(pool: Pool): Promise<INestApplication> {
     .useValue(pool)
     .compile();
   const app = moduleRef.createNestApplication();
+  app.enableCors(getCorsConfig());
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
