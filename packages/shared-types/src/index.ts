@@ -15,13 +15,16 @@ export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
  * `services/emr`'s own copy of the same mechanism (BAC-10) against the
  * caller's `role` claim. `'read_patient'`/`'write_patient'` were added by
  * BAC-10 -- see `services/emr`'s `permission.enum.ts` for what each grants
- * access to.
+ * access to. `'read_encounter'`/`'write_encounter'` were added by BAC-15 for
+ * that same service's SOAP encounter-note endpoints.
  */
 export type Permission =
   | 'manage_user_roles'
   | 'view_users'
   | 'read_patient'
-  | 'write_patient';
+  | 'write_patient'
+  | 'read_encounter'
+  | 'write_encounter';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -347,6 +350,102 @@ export interface PaginatedPatientsResponse {
   page: number;
   limit: number;
   total: number;
+}
+
+/**
+ * `services/emr` (BAC-15). A structured SOAP encounter note --
+ * Subjective/Objective/Assessment/Plan -- all free-text fields. Deliberately
+ * plain clinical-charting text fields, not a FHIR `Observation`/
+ * `Composition` resource (out of this ticket's scope, unlike BAC-10's FHIR
+ * `Patient` gateway); a future ticket can layer FHIR conformance on top
+ * without breaking this contract.
+ */
+export interface SoapNote {
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+}
+
+/**
+ * `services/emr` (BAC-15). Vitals captured alongside a SOAP note. Every
+ * field is optional (a provider may not capture every vital at every visit)
+ * but, WHEN PRESENT, is validated against a plausible clinical range by
+ * that service's `CreateEncounterDto` (class-validator) -- see that DTO for
+ * the exact bounds. Units: `heartRate` beats/minute,
+ * `bloodPressureSystolic`/`bloodPressureDiastolic` mmHg, `temperature`
+ * degrees Celsius, `respiratoryRate` breaths/minute, `spO2` percent oxygen
+ * saturation.
+ */
+export interface VitalSigns {
+  heartRate?: number;
+  bloodPressureSystolic?: number;
+  bloodPressureDiastolic?: number;
+  temperature?: number;
+  respiratoryRate?: number;
+  spO2?: number;
+}
+
+/** `services/emr` (BAC-15). Clinical severity of a recorded allergy reaction. */
+export type AllergySeverity = 'mild' | 'moderate' | 'severe';
+
+/** `services/emr` (BAC-15). One structured allergy entry captured on an encounter. */
+export interface Allergy {
+  substance: string;
+  reaction?: string;
+  severity?: AllergySeverity;
+}
+
+/** Request body for `POST /patients/:patientId/encounters` (BAC-15, AC1). */
+export interface CreateEncounterRequest {
+  soapNote: SoapNote;
+  vitals?: VitalSigns;
+  allergies?: Allergy[];
+}
+
+/**
+ * An encounter as returned by `services/emr`'s
+ * `POST /patients/:patientId/encounters` and
+ * `GET /patients/:patientId/encounters` (BAC-15, AC1/AC2). `vitals` is
+ * `null` when none of the optional vitals fields were captured for this
+ * encounter.
+ */
+export interface EncounterSummary {
+  id: string;
+  tenantId: string;
+  patientId: string;
+  soapNote: SoapNote;
+  vitals: VitalSigns | null;
+  allergies: Allergy[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Payload published when a SOAP encounter note is saved (BAC-15, AC4).
+ * `services/emr`'s `EncountersService.create` calls
+ * `DomainEventPublisher.publishEncounterCreated` with exactly this shape
+ * after every successful `POST /patients/:patientId/encounters`, reusing
+ * `services/patient`'s BAC-14 `DomainEventPublisher`/
+ * `KafkaEventPublisherAdapter`/`NoopDomainEventPublisher` convention on the
+ * producing side (`KAFKA_PRODUCER_ENABLED=true` gated; a no-op default
+ * everywhere else, since no real broker is provisioned in this
+ * repo/sandbox). `eventId` is the encounter's own id -- a stable value
+ * reusable as an idempotency key by a downstream consumer (e.g.
+ * `services/billing`'s BAC-11 usage-metering consumer, matching
+ * `MeteredDomainEvent.eventId`'s contract exactly). Deliberately shaped this
+ * way (an explicit `eventId`, distinct from a bare resource id) so this
+ * event does not repeat BAC-14's original review finding, where
+ * `PatientCreatedEvent` initially had no obvious idempotency-key field
+ * before being reconciled against billing's `MeteredDomainEvent` contract.
+ */
+export interface EncounterCreatedEvent {
+  eventId: string;
+  encounterId: string;
+  patientId: string;
+  tenantId: string;
+  /** ISO-8601 timestamp of creation. */
+  createdAt: string;
 }
 
 /**
