@@ -264,23 +264,89 @@ export interface FhirOperationOutcomeIssue {
 }
 
 /**
- * Payload shape a FUTURE domain-event publisher would produce when a FHIR
- * `Patient` resource is created (BAC-10). Mirrors `UserRegisteredEvent`'s
- * documented-contract-with-no-real-publisher convention exactly: **no
- * service in this repo publishes this event onto a real broker today** --
- * `services/emr`'s `PatientsService` does not emit it, and there is no
- * Kafka producer anywhere in this repo/sandbox (see
- * `services/notification/src/notifications/events/README.md` for why no
- * ticket has wired one up yet). This type exists so a future
- * publisher/consumer pair has a concrete, shared contract to build against,
- * per this ticket's explicit instruction not to invent a new event-bus
- * mechanism where none exists yet.
+ * Payload published when a patient is registered. Originally documented by
+ * BAC-10 (`services/emr`) as a contract-with-no-real-publisher (that
+ * service's FHIR `PatientsService` never emitted it, and there was no Kafka
+ * producer anywhere in this repo/sandbox yet). **BAC-14 (`services/patient`)
+ * is the real publisher**: `PatientsService.create` calls
+ * `DomainEventPublisher.publishPatientCreated` with exactly this shape after
+ * every successful `POST /patients` (AC4), reusing
+ * `services/notification`'s BAC-9 `kafkajs`-backed adapter convention on the
+ * producing side (`services/patient/src/events/kafka-event-publisher.adapter.ts`).
+ * The concrete transport is only a real Kafka broker when an operator
+ * explicitly sets `KAFKA_PRODUCER_ENABLED=true` (defaults to `false`
+ * everywhere, including production, since no real broker is provisioned in
+ * this repo/sandbox) -- see that service's `events/` directory doc comments
+ * for the full scope boundary. `services/billing`'s usage-metering consumer
+ * (BAC-11/S9) is the intended future subscriber; wiring that consumption is
+ * explicitly out of THIS ticket's scope.
  */
 export interface PatientCreatedEvent {
   patientId: string;
   tenantId: string;
   /** ISO-8601 timestamp of creation. */
   createdAt: string;
+}
+
+/**
+ * `services/patient` (BAC-14). Sex/gender as recorded on intake --
+ * deliberately a small closed set (mirrors FHIR's own `AdministrativeGender`
+ * code system already reused by `services/emr`'s BAC-10
+ * `FhirPatientResource.gender`, without requiring full FHIR conformance in
+ * this plain-REST registration/search service).
+ */
+export type PatientGender = 'male' | 'female' | 'other' | 'unknown';
+
+/** Request body for `POST /patients` (BAC-14, AC1). */
+export interface RegisterPatientRequest {
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`), no time component. */
+  dateOfBirth: string;
+  gender?: PatientGender;
+  phone?: string;
+  email?: string;
+}
+
+/**
+ * A patient as returned by `services/patient`'s `POST /patients` and
+ * `GET /patients` (BAC-14, AC1/AC3). `mrn` is tenant-unique and sequential
+ * (AC1/AC2) -- see that service's `patients/patients.repository.ts` for the
+ * per-tenant-schema counter mechanism that guarantees it.
+ */
+export interface PatientSummary {
+  id: string;
+  tenantId: string;
+  mrn: string;
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`). */
+  dateOfBirth: string;
+  gender: PatientGender | null;
+  phone: string | null;
+  email: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /patients` query params (BAC-14, AC3): search by name, MRN, and/or date of birth, paginated. */
+export interface PatientSearchQuery {
+  /** Matches against either the first or last name (partial, case-insensitive). */
+  name?: string;
+  /** Matches against the MRN (partial, case-insensitive). */
+  mrn?: string;
+  /** Exact match, ISO-8601 date (`YYYY-MM-DD`). */
+  dateOfBirth?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** `GET /patients`'s paginated response body (BAC-14, AC3). */
+export interface PaginatedPatientsResponse {
+  items: PatientSummary[];
+  page: number;
+  limit: number;
+  total: number;
 }
 
 /**
