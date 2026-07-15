@@ -16,4 +16,8 @@ export enum Permission {
   READ_PATIENT = 'read_patient',
   /** Grants access to `POST /fhir/Patient` (BAC-10, AC2). */
   WRITE_PATIENT = 'write_patient',
+  /** Grants access to `GET /patients/:patientId/encounters` (BAC-15, AC2). */
+  READ_ENCOUNTER = 'read_encounter',
+  /** Grants access to `POST /patients/:patientId/encounters` (BAC-15, AC1). */
+  WRITE_ENCOUNTER = 'write_encounter',
 }

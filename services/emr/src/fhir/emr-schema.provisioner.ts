@@ -35,11 +35,22 @@ function isTableAlreadyExistsError(error: unknown): boolean {
  * service's `audit-logs/` directory doc comments for why the mechanism is
  * duplicated (not literally imported) the same way `TenantGuard`/
  * `AccessTokenGuard` already are across every service in this repo.
+ *
+ * Also provisions `<schema>.encounters` (`ensureEncountersTable`, BAC-15):
+ * a tenant-scoped SOAP-encounter-note table. SOAP fields
+ * (subjective/objective/assessment/plan) and vitals are explicit columns
+ * (structured, queryable, and consistent with `services/patient`'s
+ * BAC-14 `patients` table convention of explicit columns over a JSONB
+ * blob for well-known fields); `allergies` is a JSONB array since it is a
+ * variable-length list of structured entries, mirroring this service's own
+ * BAC-10 `patients.resource` JSONB-document convention for that shape of
+ * data.
  */
 @Injectable()
 export class EmrSchemaProvisioner {
   private readonly provisionedPatientsSchemas = new Set<string>();
   private readonly provisionedAuditLogsSchemas = new Set<string>();
+  private readonly provisionedEncountersSchemas = new Set<string>();
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
@@ -100,5 +111,48 @@ export class EmrSchemaProvisioner {
     }
 
     this.provisionedAuditLogsSchemas.add(schemaName);
+  }
+
+  /**
+   * Idempotently ensures `<schema>.encounters` exists (BAC-15, AC1/AC2).
+   * Vitals columns are nullable `NUMERIC` (a provider may not capture every
+   * vital at every visit; `CreateEncounterDto` is the layer that enforces
+   * plausible clinical ranges, AC3, not this DDL). `allergies` defaults to
+   * an empty JSONB array so a row always has a well-formed (never `NULL`)
+   * list to deserialize.
+   */
+  async ensureEncountersTable(schemaName: string): Promise<void> {
+    if (this.provisionedEncountersSchemas.has(schemaName)) {
+      return;
+    }
+    const schema = quoteSchemaIdentifier(schemaName);
+
+    try {
+      await this.pool.query(`
+        CREATE TABLE ${schema}.encounters (
+          id UUID PRIMARY KEY,
+          patient_id UUID NOT NULL,
+          subjective TEXT NOT NULL,
+          objective TEXT NOT NULL,
+          assessment TEXT NOT NULL,
+          plan TEXT NOT NULL,
+          heart_rate NUMERIC NULL,
+          blood_pressure_systolic NUMERIC NULL,
+          blood_pressure_diastolic NUMERIC NULL,
+          temperature NUMERIC NULL,
+          respiratory_rate NUMERIC NULL,
+          spo2 NUMERIC NULL,
+          allergies JSONB NOT NULL DEFAULT '[]',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+    } catch (error) {
+      if (!isTableAlreadyExistsError(error)) {
+        throw error;
+      }
+    }
+
+    this.provisionedEncountersSchemas.add(schemaName);
   }
 }
