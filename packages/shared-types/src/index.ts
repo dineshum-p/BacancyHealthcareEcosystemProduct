@@ -430,16 +430,31 @@ export interface EncounterSummary {
  * `KafkaEventPublisherAdapter`/`NoopDomainEventPublisher` convention on the
  * producing side (`KAFKA_PRODUCER_ENABLED=true` gated; a no-op default
  * everywhere else, since no real broker is provisioned in this
- * repo/sandbox). `eventId` is the encounter's own id -- a stable value
- * reusable as an idempotency key by a downstream consumer (e.g.
- * `services/billing`'s BAC-11 usage-metering consumer, matching
- * `MeteredDomainEvent.eventId`'s contract exactly). Deliberately shaped this
- * way (an explicit `eventId`, distinct from a bare resource id) so this
- * event does not repeat BAC-14's original review finding, where
- * `PatientCreatedEvent` initially had no obvious idempotency-key field
- * before being reconciled against billing's `MeteredDomainEvent` contract.
+ * repo/sandbox).
+ *
+ * This is NOT a `MeteredDomainEvent` and is not presented as one: it has no
+ * `metric`/`quantity`/`occurredAt`, and it deliberately DOES carry
+ * `patientId`/`encounterId` -- identifying details `MeteredDomainEvent`'s own
+ * doc comment says a usage record must NEVER contain. Any future
+ * `services/billing` consumer needs a translation/mapping layer between the
+ * two shapes, not a direct cast. That mapping would be:
+ * `MeteredDomainEvent.eventId` <- this event's `eventId` (already the
+ * encounter's own id, a stable idempotency key -- reuse it as-is),
+ * `occurredAt` <- this event's `createdAt`, `metric` <- the fixed constant
+ * `'encounter.created'` (see `MeteredMetric`), `quantity` <- `1`. `tenantId`
+ * carries over directly; `patientId`/`encounterId` are simply dropped by the
+ * mapping (never forwarded to billing).
+ *
+ * Note on BAC-14: `PatientCreatedEvent` (this file, above) is BAC-14's
+ * analogous domain event and, as of this writing, it ALSO does not match
+ * `MeteredDomainEvent`'s shape and has never been reconciled against it --
+ * `services/billing`'s usage-metering endpoint only accepts `MeteredDomainEvent`
+ * directly (see `services/billing/src/usage/usage.service.ts`), and no code
+ * in this repo maps `PatientCreatedEvent` to it. Do not assume otherwise
+ * when reusing this convention for a future event.
  */
 export interface EncounterCreatedEvent {
+  /** Idempotency key: reused as the encounter's own id (see mapping note above). */
   eventId: string;
   encounterId: string;
   patientId: string;

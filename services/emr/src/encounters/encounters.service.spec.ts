@@ -1,13 +1,28 @@
+import { NotFoundException } from '@nestjs/common';
 import { EncountersService } from './encounters.service';
 import { EncountersRepository } from './encounters.repository';
 import { EmrSchemaProvisioner } from '../fhir/emr-schema.provisioner';
 import { DomainEventPublisher } from '../events/domain-event-publisher.interface';
+import { PatientsRepository } from '../fhir/patients.repository';
+import { PatientRecord } from '../fhir/patient.entity';
 import { CreateEncounterDto } from './dto/create-encounter.dto';
 import { EncounterRecord } from './encounter.entity';
 
 const SCHEMA = 'tenant_a';
 const TENANT_ID = 'tenant-1';
 const PATIENT_ID = '11111111-1111-1111-1111-111111111111';
+
+function makePatientRecord(
+  overrides: Partial<PatientRecord> = {},
+): PatientRecord {
+  return {
+    id: PATIENT_ID,
+    resource: { resourceType: 'Patient', id: PATIENT_ID },
+    createdAt: new Date('2026-07-14T00:00:00.000Z'),
+    updatedAt: new Date('2026-07-14T00:00:00.000Z'),
+    ...overrides,
+  };
+}
 
 function makeRecord(overrides: Partial<EncounterRecord> = {}): EncounterRecord {
   return {
@@ -48,6 +63,7 @@ describe('EncountersService', () => {
   let repository: jest.Mocked<EncountersRepository>;
   let schemaProvisioner: jest.Mocked<EmrSchemaProvisioner>;
   let eventPublisher: jest.Mocked<DomainEventPublisher>;
+  let patientsRepository: jest.Mocked<PatientsRepository>;
   let service: EncountersService;
 
   beforeEach(() => {
@@ -57,14 +73,19 @@ describe('EncountersService', () => {
     } as unknown as jest.Mocked<EncountersRepository>;
     schemaProvisioner = {
       ensureEncountersTable: jest.fn().mockResolvedValue(undefined),
+      ensurePatientsTable: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<EmrSchemaProvisioner>;
     eventPublisher = {
       publishEncounterCreated: jest.fn().mockResolvedValue(undefined),
     };
+    patientsRepository = {
+      findById: jest.fn().mockResolvedValue(makePatientRecord()),
+    } as unknown as jest.Mocked<PatientsRepository>;
     service = new EncountersService(
       repository,
       schemaProvisioner,
       eventPublisher,
+      patientsRepository,
     );
   });
 
@@ -162,6 +183,37 @@ describe('EncountersService', () => {
         tenantId: TENANT_ID,
         createdAt: result.createdAt,
       });
+    });
+
+    it('404s (NotFoundException) for a well-formed but nonexistent patientId, without persisting an encounter or publishing an event', async () => {
+      const dto = makeDto();
+      patientsRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.create(TENANT_ID, SCHEMA, PATIENT_ID, dto),
+      ).rejects.toThrow(NotFoundException);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(repository.insert).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(eventPublisher.publishEncounterCreated).not.toHaveBeenCalled();
+    });
+
+    it('looks up the patient in the SAME schema (same-service check) before persisting', async () => {
+      const dto = makeDto();
+      repository.insert.mockResolvedValue(makeRecord());
+
+      await service.create(TENANT_ID, SCHEMA, PATIENT_ID, dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(schemaProvisioner.ensurePatientsTable).toHaveBeenCalledWith(
+        SCHEMA,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(patientsRepository.findById).toHaveBeenCalledWith(
+        SCHEMA,
+        PATIENT_ID,
+      );
     });
   });
 

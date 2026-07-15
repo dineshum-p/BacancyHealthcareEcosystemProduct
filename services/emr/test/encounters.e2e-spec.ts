@@ -86,6 +86,30 @@ describe('SOAP encounter notes (e2e)', () => {
     return signToken({ userId: 'user-1', tenantId: tenant.id, role });
   }
 
+  /**
+   * `EncountersService.create` now 404s unless `patientId` resolves to a
+   * row in this SAME tenant schema's `patients` table (BAC-10's FHIR
+   * gateway) -- so every test proving a SUCCESSFUL encounter creation must
+   * first create a real patient via `POST /fhir/Patient` and use its
+   * server-assigned id, rather than a bare `randomUUID()`.
+   */
+  async function createPatient(
+    tenant: { id: string; slug: string },
+    token: string,
+  ): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .post('/fhir/Patient')
+      .set('X-Tenant-Id', tenant.slug)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        resourceType: 'Patient',
+        name: [{ family: 'Doe', given: ['Jane'] }],
+      })
+      .expect(201);
+
+    return (response.body as { id: string }).id;
+  }
+
   const validSoapNote = {
     subjective: 'Patient reports dizziness and headaches.',
     objective: 'BP 150/95, HR 88, alert and oriented.',
@@ -110,8 +134,8 @@ describe('SOAP encounter notes (e2e)', () => {
 
   describe('AC1: POST /patients/:patientId/encounters', () => {
     it('saves a structured SOAP note, vitals, and allergies, returning 201 with the created encounter', async () => {
-      const patientId = randomUUID();
       const token = tokenFor(tenants.tenantA);
+      const patientId = await createPatient(tenants.tenantA, token);
 
       const response = await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)
@@ -130,8 +154,8 @@ describe('SOAP encounter notes (e2e)', () => {
     });
 
     it('accepts an encounter with no vitals/allergies (both optional), returning null vitals and an empty allergies list', async () => {
-      const patientId = randomUUID();
       const token = tokenFor(tenants.tenantA);
+      const patientId = await createPatient(tenants.tenantA, token);
 
       const response = await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)
@@ -181,13 +205,39 @@ describe('SOAP encounter notes (e2e)', () => {
     });
 
     it('allows a CLINIC_ADMIN role to create an encounter', async () => {
-      const patientId = randomUUID();
       const adminToken = tokenFor(tenants.tenantA, 'clinic_admin');
+      const patientId = await createPatient(tenants.tenantA, adminToken);
 
       await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)
         .set('X-Tenant-Id', tenants.tenantA.slug)
         .set('Authorization', `Bearer ${adminToken}`)
+        .send({ soapNote: validSoapNote })
+        .expect(201);
+    });
+  });
+
+  describe('POST /patients/:patientId/encounters: same-schema patient existence check', () => {
+    it('404s for a well-formed but nonexistent patientId (no patient row in this schema)', async () => {
+      const patientId = randomUUID();
+      const token = tokenFor(tenants.tenantA);
+
+      await request(app.getHttpServer())
+        .post(`/patients/${patientId}/encounters`)
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ soapNote: validSoapNote })
+        .expect(404);
+    });
+
+    it("still returns 201 for a patientId that DOES exist in services/emr's own patients table", async () => {
+      const token = tokenFor(tenants.tenantA);
+      const patientId = await createPatient(tenants.tenantA, token);
+
+      await request(app.getHttpServer())
+        .post(`/patients/${patientId}/encounters`)
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${token}`)
         .send({ soapNote: validSoapNote })
         .expect(201);
     });
@@ -216,8 +266,8 @@ describe('SOAP encounter notes (e2e)', () => {
 
   describe('AC2: GET /patients/:patientId/encounters', () => {
     it("returns the patient's encounter history, most recent first", async () => {
-      const patientId = randomUUID();
       const token = tokenFor(tenants.tenantA);
+      const patientId = await createPatient(tenants.tenantA, token);
 
       const first = await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)
@@ -252,8 +302,8 @@ describe('SOAP encounter notes (e2e)', () => {
 
     it('never returns encounters for a different patient', async () => {
       const patientId = randomUUID();
-      const otherPatientId = randomUUID();
       const token = tokenFor(tenants.tenantA);
+      const otherPatientId = await createPatient(tenants.tenantA, token);
 
       await request(app.getHttpServer())
         .post(`/patients/${otherPatientId}/encounters`)
@@ -272,9 +322,9 @@ describe('SOAP encounter notes (e2e)', () => {
     });
 
     it('never returns encounters recorded under a different tenant (multi-tenant isolation)', async () => {
-      const patientId = randomUUID();
       const tokenA = tokenFor(tenants.tenantA);
       const tokenB = tokenFor(tenants.tenantB);
+      const patientId = await createPatient(tenants.tenantA, tokenA);
 
       await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)
@@ -306,8 +356,8 @@ describe('SOAP encounter notes (e2e)', () => {
 
   describe('AC4: creating an encounter emits an encounter.created domain event', () => {
     it('publishes encounter.created with the correct shape (eventId = the encounter id) after a successful save', async () => {
-      const patientId = randomUUID();
       const token = tokenFor(tenants.tenantA);
+      const patientId = await createPatient(tenants.tenantA, token);
 
       const response = await request(app.getHttpServer())
         .post(`/patients/${patientId}/encounters`)

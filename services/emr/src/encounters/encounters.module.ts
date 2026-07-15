@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { EventsModule } from '../events/events.module';
 import { EmrSchemaModule } from '../fhir/emr-schema.module';
+import { PatientsModule } from '../fhir/patients.module';
 import { EncountersController } from './encounters.controller';
 import { EncountersService } from './encounters.service';
 import { EncountersRepository } from './encounters.repository';
@@ -19,7 +20,14 @@ import { EncountersRepository } from './encounters.repository';
  * `AuditLogsModule` provides the globally-registered `AuditLogInterceptor`
  * (`@Audited('Encounter')` on `EncountersController.create()`).
  * `EventsModule` provides `DOMAIN_EVENT_PUBLISHER` (BAC-15, AC4).
- * `EmrSchemaModule` provides `EmrSchemaProvisioner.ensureEncountersTable`.
+ * `EmrSchemaModule` provides `EmrSchemaProvisioner.ensureEncountersTable`/
+ * `ensurePatientsTable` (the SAME singleton instance `PatientsModule`
+ * itself imports, so its provisioned-schema tracking is shared). `PatientsModule`
+ * provides `PatientsRepository.findById`, reused here (not reimplemented)
+ * for the same-schema patient-existence check `EncountersService.create`
+ * performs before persisting -- no new module/dependency required since
+ * both `patients` and `encounters` already live in the same per-tenant
+ * schema.
  */
 @Module({
   imports: [
@@ -28,6 +36,7 @@ import { EncountersRepository } from './encounters.repository';
     AuditLogsModule,
     EventsModule,
     EmrSchemaModule,
+    PatientsModule,
   ],
   controllers: [EncountersController],
   providers: [EncountersService, EncountersRepository],

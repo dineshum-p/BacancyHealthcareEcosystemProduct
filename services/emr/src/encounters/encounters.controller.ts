@@ -30,18 +30,24 @@ import { CreateEncounterDto } from './dto/create-encounter.dto';
  * `services/patient`'s BAC-14 `PatientsController` and this service's own
  * BAC-10 `PatientsController` already established.
  *
- * `:patientId` is validated as a well-formed UUID (`ParseUUIDPipe`) and
- * stored as-is; this service does NOT make a live cross-service HTTP call
- * to `services/patient` to verify the id actually exists there. This
- * ticket's instructions explicitly permit that minimal option ("at minimum
- * accept it as a path param and store it") in preference to inventing a new
- * integration style: the one existing cross-service HTTP pattern in this
- * repo (`services/tenant`'s onboarding `HttpAuthServiceClient`/
- * `HttpNotificationServiceClient`, calling an `InternalServiceGuard`
- * -protected endpoint) would require ALSO adding a new internal lookup
- * endpoint to `services/patient` -- out of scope for a story targeting only
- * `services/emr`. A future ticket can add that validation without breaking
- * this contract.
+ * `:patientId` is validated as a well-formed UUID (`ParseUUIDPipe`), and
+ * `EncountersService.create` additionally looks it up in THIS SAME tenant
+ * schema's `patients` table (`services/emr`'s own BAC-10 `PatientsRepository`,
+ * already provisioned in the same schema as `encounters` -- no new module or
+ * cross-service call needed) before persisting, 404ing if it doesn't
+ * resolve there.
+ *
+ * IMPORTANT scope limit: this is a SAME-SERVICE check only. It does NOT
+ * call out to `services/patient` (BAC-14's canonical patient-registration
+ * service) and does NOT validate against that service's registry. A patient
+ * registered via `services/patient` (BAC-14) is a logically separate record
+ * from anything in `services/emr`'s own `patients` table (BAC-10's FHIR
+ * gateway) -- the two are not reconciled, and a `patientId` that is valid in
+ * one may not exist in the other. Closing that cross-service reconciliation
+ * gap (e.g. via the `services/tenant`-style `HttpAuthServiceClient`/
+ * `HttpNotificationServiceClient` internal-call pattern, which would require
+ * a new lookup endpoint on `services/patient`) is explicitly out of scope
+ * for this fix and left to a future ticket.
  */
 @UseGuards(TenantGuard, AccessTokenGuard, PermissionsGuard)
 @Controller('patients/:patientId/encounters')

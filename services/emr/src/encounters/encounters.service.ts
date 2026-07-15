@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { EncounterSummary, VitalSigns } from '@hep/shared-types';
 import { EncountersRepository } from './encounters.repository';
 import { EmrSchemaProvisioner } from '../fhir/emr-schema.provisioner';
+import { PatientsRepository } from '../fhir/patients.repository';
 import { EncounterRecord } from './encounter.entity';
 import { CreateEncounterDto } from './dto/create-encounter.dto';
 import { DOMAIN_EVENT_PUBLISHER } from '../events/events.constants';
@@ -21,16 +22,22 @@ export class EncountersService {
     private readonly schemaProvisioner: EmrSchemaProvisioner,
     @Inject(DOMAIN_EVENT_PUBLISHER)
     private readonly eventPublisher: DomainEventPublisher,
+    private readonly patientsRepository: PatientsRepository,
   ) {}
 
   /**
    * AC1: saves a structured SOAP note plus vitals and an allergy list
-   * against `patientId` (accepted as a path param and stored as-is -- see
-   * `EncountersController`'s doc comment for why this service does not make
-   * a live cross-service call to `services/patient` to verify the id
-   * exists). AC4: always publishes an `encounter.created` domain event
-   * after a successful creation, through `DomainEventPublisher`, with the
-   * encounter's own id reused as the event's `eventId` (idempotency key).
+   * against `patientId`. Before persisting, verifies `patientId` resolves to
+   * a row in THIS SAME tenant schema's `patients` table (BAC-10's
+   * `PatientsRepository.findById`, reused here rather than reinventing a
+   * lookup -- see `EncountersController`'s doc comment for the scope of
+   * what this check does and does NOT cover) and 404s
+   * (`NotFoundException`) if it doesn't, matching the same not-found
+   * convention `services/emr`'s own FHIR `PatientsService.findByIdForSchema`
+   * already uses for an unresolvable id. AC4: always publishes an
+   * `encounter.created` domain event after a successful creation, through
+   * `DomainEventPublisher`, with the encounter's own id reused as the
+   * event's `eventId` (idempotency key).
    */
   async create(
     tenantId: string,
@@ -38,6 +45,15 @@ export class EncountersService {
     patientId: string,
     dto: CreateEncounterDto,
   ): Promise<EncounterSummary> {
+    await this.schemaProvisioner.ensurePatientsTable(schemaName);
+    const patient = await this.patientsRepository.findById(
+      schemaName,
+      patientId,
+    );
+    if (!patient) {
+      throw new NotFoundException(`Patient "${patientId}" was not found.`);
+    }
+
     await this.schemaProvisioner.ensureEncountersTable(schemaName);
 
     const record = await this.encountersRepository.insert(
