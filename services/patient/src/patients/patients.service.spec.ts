@@ -96,10 +96,29 @@ describe('PatientsService', () => {
 
       expect(publishPatientCreated).toHaveBeenCalledTimes(1);
       expect(publishPatientCreated).toHaveBeenCalledWith({
+        eventId: 'patient-1',
         patientId: 'patient-1',
         tenantId: 'tenant-1',
         createdAt: '2026-07-14T00:00:00.000Z',
       });
+    });
+
+    it('reuses the patient id as the event idempotency key (eventId === patientId), not a freshly generated value', async () => {
+      const { service, publishPatientCreated } = makeService();
+
+      await service.create('tenant-1', 'acme', {
+        firstName: 'Jane',
+        lastName: 'Doe',
+        dateOfBirth: '1990-05-12',
+      });
+
+      const calls = publishPatientCreated.mock.calls as unknown[][];
+      const publishedEvent = calls[0][0] as {
+        eventId: string;
+        patientId: string;
+      };
+      expect(publishedEvent.eventId).toEqual(publishedEvent.patientId);
+      expect(publishedEvent.eventId).toEqual('patient-1');
     });
 
     it('never publishes a patient.created event if persistence fails', async () => {
