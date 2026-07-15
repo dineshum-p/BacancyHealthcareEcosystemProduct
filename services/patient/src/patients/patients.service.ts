@@ -53,6 +53,9 @@ export class PatientsService {
     const summary = this.toSummary(tenantId, record);
 
     await this.eventPublisher.publishPatientCreated({
+      // Reuse the patient id as the idempotency key (NOT a freshly
+      // generated UUID) -- see `PatientCreatedEvent.eventId`'s doc comment.
+      eventId: record.id,
       patientId: record.id,
       tenantId,
       createdAt: summary.createdAt,

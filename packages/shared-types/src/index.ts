@@ -282,6 +282,26 @@ export interface FhirOperationOutcomeIssue {
  * explicitly out of THIS ticket's scope.
  */
 export interface PatientCreatedEvent {
+  /**
+   * Idempotency key for a downstream at-least-once consumer (e.g. a future
+   * `services/billing` BAC-11 usage-metering consumer). MUST be a stable,
+   * reusable value -- this event's own `patientId` -- and NOT a freshly
+   * generated UUID per publish; a fresh UUID on every (re)delivery would
+   * defeat dedup on redelivery, since the same underlying `patient.created`
+   * occurrence would be recorded as a distinct event each time. Maps onto
+   * `MeteredDomainEvent.eventId` unchanged. See `PatientsService.create`,
+   * the real publisher of this event, for where `eventId` is set to
+   * `record.id` (the same value as `patientId`).
+   *
+   * The rest of this event maps onto `MeteredDomainEvent` as: `createdAt`
+   * -> `occurredAt` (the metered event's `occurredAt` is this event's
+   * `createdAt`, NOT the time billing ingests it); a future publisher would
+   * set `metric: 'patient.created'` and `quantity: 1`. Wiring that mapping
+   * is still out of this ticket's scope -- see this file's
+   * `MeteredDomainEvent` doc comment -- but the shape here is compatible
+   * with it today.
+   */
+  eventId: string;
   patientId: string;
   tenantId: string;
   /** ISO-8601 timestamp of creation. */

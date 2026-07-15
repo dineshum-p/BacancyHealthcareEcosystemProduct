@@ -6,6 +6,7 @@ describe('NoopDomainEventPublisher', () => {
 
     await expect(
       publisher.publishPatientCreated({
+        eventId: 'p1',
         patientId: 'p1',
         tenantId: 't1',
         createdAt: '2026-07-14T00:00:00.000Z',

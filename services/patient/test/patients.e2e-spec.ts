@@ -351,6 +351,7 @@ describe('Patient registration and search (e2e)', () => {
       expect(fakeEventPublisher.publishPatientCreated).toHaveBeenCalledTimes(1);
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
       expect(fakeEventPublisher.publishPatientCreated).toHaveBeenCalledWith({
+        eventId: body.id,
         patientId: body.id,
         tenantId: tenants.tenantA.id,
         createdAt: body.createdAt,

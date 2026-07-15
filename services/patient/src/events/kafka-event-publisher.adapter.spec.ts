@@ -8,6 +8,7 @@ const CONFIG = {
 };
 
 const EVENT = {
+  eventId: 'patient-1',
   patientId: 'patient-1',
   tenantId: 'tenant-1',
   createdAt: '2026-07-14T00:00:00.000Z',
