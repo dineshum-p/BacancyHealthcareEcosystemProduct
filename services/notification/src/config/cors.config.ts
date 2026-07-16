@@ -1,13 +1,11 @@
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 /**
- * Dev-only fallback allowed origin (BAC-14, added proactively -- mirrors
- * `services/tenant`'s (BAC-12) and `services/auth`'s (BAC-13) identical
- * `src/config/cors.config.ts`, both of which had to add this REACTIVELY
- * after a missing-CORS bug was found once a frontend ticket actually called
- * them cross-origin. BAC-17 ("Register and search patients from the clinic
- * UI") will call THIS service directly from the browser, so this is added
- * now instead of waiting for that bug report): `apps/web`'s dev server is
+ * Dev-only fallback allowed origin: mirrors `services/tenant`'s (BAC-12),
+ * `services/auth`'s (BAC-13), and `services/patient`'s (BAC-14)
+ * `src/config/cors.config.ts` -- added here proactively (this service had no
+ * CORS wiring at all until now) rather than waiting for a frontend ticket to
+ * hit the same missing-CORS bug a fourth time. `apps/web`'s dev server is
  * pinned to port 3000 (`apps/web/package.json`'s `dev` script), while every
  * backend service claims a fixed port starting from 3001 (see
  * `scripts/start-all-local.sh`) so it never collides with the frontend.
@@ -15,27 +13,31 @@ import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-option
  */
 const DEV_DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000'];
 
-/** Methods the browser calls on this service: `POST /patients` (register) and `GET /patients` (search). */
+/**
+ * Methods a browser calls on this service: `POST /notifications` and
+ * `GET /notifications/:id`. `POST /notifications/internal` is guarded by
+ * `InternalServiceGuard` and is only ever called server-to-server (by
+ * `services/tenant`), never by a browser.
+ */
 const ALLOWED_METHODS = ['GET', 'POST'];
 
 /**
- * Headers the frontend sends. Every route on this service is guarded by
+ * Headers the frontend sends. The two browser-facing routes are guarded by
  * `TenantGuard` + `AccessTokenGuard`, so both `X-Tenant-Id` and
- * `Authorization` are needed; `Content-Type` for the JSON `POST /patients`
- * body.
+ * `Authorization` are needed; `Content-Type` for the JSON `POST` body.
  */
 const ALLOWED_HEADERS = ['Authorization', 'X-Tenant-Id', 'Content-Type'];
 
 /**
- * Builds this service's CORS policy (BAC-14, same shape as
- * `services/tenant`'s BAC-12 and `services/auth`'s BAC-13
- * `getCorsConfig()`): `services/patient` is called cross-origin by
+ * Builds this service's CORS policy, same shape as `services/tenant`'s
+ * BAC-12, `services/auth`'s BAC-13, and `services/patient`'s BAC-14
+ * `getCorsConfig()`: `services/notification` is called cross-origin by
  * `apps/web` in every real deployment (they're separate deployables), so
  * without this, every browser request -- including the preflight `OPTIONS`
  * -- is blocked by the browser before it ever reaches a route handler.
  * `CORS_ALLOWED_ORIGINS` (comma-separated) lets a real deployment configure
  * its actual frontend origin(s); unset falls back to a small set of common
- * local dev origins so the clinic UI works out of the box.
+ * local dev origins.
  */
 export function getCorsConfig(): CorsOptions {
   const configuredOrigins = process.env.CORS_ALLOWED_ORIGINS;

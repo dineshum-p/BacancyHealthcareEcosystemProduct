@@ -7,7 +7,7 @@ describe('getCorsConfig', () => {
     process.env = { ...original };
   });
 
-  it('falls back to common local dev origins when CORS_ALLOWED_ORIGINS is unset', () => {
+  it('falls back to the common local dev origin when CORS_ALLOWED_ORIGINS is unset', () => {
     delete process.env.CORS_ALLOWED_ORIGINS;
 
     expect(getCorsConfig()).toEqual({
@@ -20,16 +20,16 @@ describe('getCorsConfig', () => {
 
   it('reads a comma-separated allow-list from CORS_ALLOWED_ORIGINS', () => {
     process.env.CORS_ALLOWED_ORIGINS =
-      'https://admin.example.com, https://console.example.com';
+      'https://billing.example.com, https://admin.example.com';
 
     expect(getCorsConfig().origin).toEqual([
+      'https://billing.example.com',
       'https://admin.example.com',
-      'https://console.example.com',
     ]);
   });
 
-  it('always allows the methods and headers the onboarding console actually uses', () => {
-    process.env.CORS_ALLOWED_ORIGINS = 'https://admin.example.com';
+  it('always allows the methods and headers the usage console actually uses', () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'https://billing.example.com';
 
     const config = getCorsConfig();
     expect(config.methods).toEqual(['GET', 'POST']);

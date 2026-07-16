@@ -21,13 +21,15 @@ import { generateTotpCode } from '../services/auth/test/support/dev-totp';
 
 /**
  * Dev-only, throwaway harness (NOT shipped/built/CI'd) that boots real
- * listening instances of services/tenant (:3000), services/auth (:3001), and
- * services/notification (:3003) sharing ONE in-memory (pg-mem) Postgres pool
- * -- so `apps/web` can be pointed at real, live backends for browser E2E in
- * a sandbox with no Docker/Postgres available (see the BAC-12 pipeline
- * session notes). All three point at the SAME pool object, mirroring the
- * "same Postgres cluster" assumption every service's own .env.example
- * documents for a real deployment.
+ * listening instances of services/tenant (:3001), services/auth (:3002), and
+ * services/notification (:3004) -- matching apps/web's own port assignment
+ * scheme (apps/web owns :3000; see scripts/start-all-local.sh) so this
+ * harness never collides with a live `next dev` -- sharing ONE in-memory
+ * (pg-mem) Postgres pool so `apps/web` can be pointed at real, live backends
+ * for browser E2E in a sandbox with no Docker/Postgres available (see the
+ * BAC-12 pipeline session notes). All three point at the SAME pool object,
+ * mirroring the "same Postgres cluster" assumption every service's own
+ * .env.example documents for a real deployment.
  *
  * Uses `@nestjs/testing`'s `Test.createTestingModule(...).overrideProvider`
  * -- the exact mechanism every service's own e2e-spec already uses to swap
@@ -38,8 +40,8 @@ import { generateTotpCode } from '../services/auth/test/support/dev-totp';
  */
 
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'development';
-process.env.AUTH_SERVICE_URL = 'http://localhost:3001';
-process.env.NOTIFICATION_SERVICE_URL = 'http://localhost:3003';
+process.env.AUTH_SERVICE_URL = 'http://localhost:3002';
+process.env.NOTIFICATION_SERVICE_URL = 'http://localhost:3004';
 
 async function bootTenant(pool: Pool): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [TenantAppModule] })
@@ -51,7 +53,7 @@ async function bootTenant(pool: Pool): Promise<INestApplication> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
-  await app.listen(3000);
+  await app.listen(3001);
   return app;
 }
 
@@ -65,7 +67,7 @@ async function bootAuth(pool: Pool): Promise<INestApplication> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
-  await app.listen(3001);
+  await app.listen(3002);
   return app;
 }
 
@@ -78,7 +80,7 @@ async function bootNotification(pool: Pool): Promise<INestApplication> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
-  await app.listen(3003);
+  await app.listen(3004);
   return app;
 }
 
@@ -98,7 +100,7 @@ async function registerUser(
   tenantSlug: string,
   credentials: RegisteredCredentials,
 ): Promise<void> {
-  const response = await fetch('http://localhost:3001/auth/register', {
+  const response = await fetch('http://localhost:3002/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantSlug },
     body: JSON.stringify(credentials),
@@ -114,7 +116,7 @@ async function loginDirect(
   tenantSlug: string,
   credentials: RegisteredCredentials,
 ): Promise<{ accessToken: string }> {
-  const response = await fetch('http://localhost:3001/auth/login', {
+  const response = await fetch('http://localhost:3002/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantSlug },
     body: JSON.stringify(credentials),
@@ -138,7 +140,7 @@ async function enrollAndActivateMfa(
   tenantSlug: string,
   accessToken: string,
 ): Promise<void> {
-  const enrollResponse = await fetch('http://localhost:3001/auth/mfa/enroll', {
+  const enrollResponse = await fetch('http://localhost:3002/auth/mfa/enroll', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -150,7 +152,7 @@ async function enrollAndActivateMfa(
   }
   const { secret } = (await enrollResponse.json()) as { secret: string };
 
-  const verifyResponse = await fetch('http://localhost:3001/auth/mfa/verify', {
+  const verifyResponse = await fetch('http://localhost:3002/auth/mfa/verify', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -221,9 +223,9 @@ async function main(): Promise<void> {
       {
         status: 'ready',
         services: {
-          tenant: 'http://localhost:3000',
-          auth: 'http://localhost:3001',
-          notification: 'http://localhost:3003',
+          tenant: 'http://localhost:3001',
+          auth: 'http://localhost:3002',
+          notification: 'http://localhost:3004',
         },
         seededTenant: { id: tenantId, slug: tenantSlug, schemaName },
         loginFixtures: {
