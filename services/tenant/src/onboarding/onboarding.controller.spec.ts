@@ -4,6 +4,7 @@ import { TenantsService } from '../tenants/tenants.service';
 import { TenantStatus } from '../tenants/tenant-status.enum';
 import { Tenant } from '../tenants/tenant.entity';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
+import { PricingService } from '../pricing/pricing.service';
 import type { OnboardTenantResponse } from '@hep/shared-types';
 
 describe('OnboardingController', () => {
@@ -21,6 +22,7 @@ describe('OnboardingController', () => {
     ownerEmail: 'owner@acme.example.com',
     adminSeedStatus: 'succeeded',
     inviteStatus: 'succeeded',
+    modules: [],
   };
 
   beforeEach(() => {
@@ -30,7 +32,11 @@ describe('OnboardingController', () => {
     onboardingService = {
       onboard: jest.fn(),
     } as unknown as jest.Mocked<OnboardingService>;
-    controller = new OnboardingController(tenantsService, onboardingService);
+    controller = new OnboardingController(
+      tenantsService,
+      onboardingService,
+      new PricingService(),
+    );
   });
 
   describe('list', () => {
@@ -49,6 +55,7 @@ describe('OnboardingController', () => {
           schemaName: 'tenant_acme',
           adminSeedStatus: 'succeeded',
           inviteStatus: 'succeeded',
+          modules: [],
         },
       ]);
     });
@@ -69,6 +76,7 @@ describe('OnboardingController', () => {
         slug: 'acme',
         plan: 'starter',
         adminEmail: 'admin@acme.example.com',
+        modules: ['clinic'],
       };
       const response: OnboardTenantResponse = {
         tenant: {
@@ -80,6 +88,7 @@ describe('OnboardingController', () => {
           schemaName: 'tenant_acme',
           adminSeedStatus: 'succeeded',
           inviteStatus: 'succeeded',
+          modules: [],
         },
         adminSeed: { status: 'succeeded' },
         invite: { status: 'succeeded' },

@@ -91,6 +91,7 @@ export class OnboardingService {
       name: dto.name,
       slug: dto.slug,
       plan: dto.plan,
+      modules: dto.modules,
       ownerEmail: dto.adminEmail,
     });
 

@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { OnboardingController } from './onboarding.controller';
 import { OnboardingService } from './onboarding.service';
+import { PricingService } from '../pricing/pricing.service';
 import { SuperAdminGuard } from './super-admin.guard';
 import { AUTH_SERVICE_CLIENT } from './clients/auth-service.client';
 import { HttpAuthServiceClient } from './clients/http-auth-service.client';
@@ -30,6 +31,7 @@ import { HttpNotificationServiceClient } from './clients/http-notification-servi
   controllers: [OnboardingController],
   providers: [
     OnboardingService,
+    PricingService,
     SuperAdminGuard,
     { provide: AUTH_SERVICE_CLIENT, useClass: HttpAuthServiceClient },
     {

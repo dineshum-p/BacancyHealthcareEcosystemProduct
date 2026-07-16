@@ -1,15 +1,36 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { OnboardTenantResponse } from "@hep/shared-types";
 import { setStoredAccessToken } from "@/src/lib/auth/session";
 import * as useOnboardTenantModule from "./hooks/useOnboardTenant";
 import { OnboardTenantPage } from "./OnboardTenantPage";
 
+const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/admin/tenants/onboard",
+}));
+
 function fakeJwt(payload: object): string {
   const base64url = (value: unknown) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
   return `${base64url({ alg: "HS256" })}.${base64url(payload)}.sig`;
+}
+
+// The onboarding form's live pricing panel uses TanStack Query, so the page
+// must render under a QueryClientProvider; a fresh client per render avoids
+// cross-test cache bleed.
+function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <OnboardTenantPage />
+    </QueryClientProvider>,
+  );
 }
 
 function mockUseOnboardTenant(
@@ -31,7 +52,8 @@ function mockUseOnboardTenant(
 async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/clinic name/i), "Acme Clinic");
   await user.type(screen.getByLabelText(/slug/i), "acme-clinic");
-  await user.type(screen.getByLabelText(/plan/i), "starter");
+  // At least one module is required; plan defaults to "starter".
+  await user.click(screen.getByRole("checkbox", { name: /clinic/i }));
   await user.type(
     screen.getByLabelText(/admin email/i),
     "admin@acme.example.com",
@@ -42,6 +64,7 @@ async function fillAndSubmit(user: ReturnType<typeof userEvent.setup>) {
 describe("OnboardTenantPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    push.mockClear();
   });
 
   afterEach(() => {
@@ -54,7 +77,7 @@ describe("OnboardTenantPage", () => {
     );
     mockUseOnboardTenant({});
 
-    render(<OnboardTenantPage />);
+    renderPage();
 
     expect(screen.getByText(/not authorized/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/clinic name/i)).not.toBeInTheDocument();
@@ -71,18 +94,19 @@ describe("OnboardTenantPage", () => {
       const user = userEvent.setup();
       const mutate = mockUseOnboardTenant({});
 
-      render(<OnboardTenantPage />);
+      renderPage();
       await fillAndSubmit(user);
 
       expect(mutate).toHaveBeenCalledWith({
         name: "Acme Clinic",
         slug: "acme-clinic",
         plan: "starter",
+        modules: ["clinic"],
         adminEmail: "admin@acme.example.com",
       });
     });
 
-    it("renders the tenant as active plus a partial-failure result (AC1/AC2)", () => {
+    it("redirects to the tenants list once the tenant is created (AC1/AC2)", () => {
       const response: OnboardTenantResponse = {
         tenant: {
           id: "t1",
@@ -91,20 +115,18 @@ describe("OnboardTenantPage", () => {
           plan: "starter",
           status: "active",
           schemaName: "tenant_acme",
-          adminSeedStatus: "failed",
-          inviteStatus: "skipped",
+          adminSeedStatus: "succeeded",
+          inviteStatus: "succeeded",
+          modules: [],
         },
-        adminSeed: { status: "failed", message: "email already registered" },
-        invite: { status: "skipped" },
+        adminSeed: { status: "succeeded" },
+        invite: { status: "succeeded" },
       };
       mockUseOnboardTenant({ isSuccess: true, data: response });
 
-      render(<OnboardTenantPage />);
+      renderPage();
 
-      expect(screen.getByText("Acme Clinic")).toBeInTheDocument();
-      expect(screen.getByText(/active/i)).toBeInTheDocument();
-      expect(screen.getByText(/admin seed: failed/i)).toBeInTheDocument();
-      expect(screen.getByText("email already registered")).toBeInTheDocument();
+      expect(push).toHaveBeenCalledWith("/admin/tenants");
     });
 
     it("shows an error message when the submission itself fails", () => {
@@ -113,7 +135,7 @@ describe("OnboardTenantPage", () => {
         error: new Error("slug already taken"),
       });
 
-      render(<OnboardTenantPage />);
+      renderPage();
 
       expect(screen.getByText("slug already taken")).toBeInTheDocument();
     });

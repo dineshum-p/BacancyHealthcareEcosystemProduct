@@ -44,6 +44,7 @@ export class TenantsService {
         slug: dto.slug,
         name: dto.name,
         plan: dto.plan,
+        modules: dto.modules ?? [],
         status: TenantStatus.PENDING,
         schemaName,
         ownerEmail: dto.ownerEmail,

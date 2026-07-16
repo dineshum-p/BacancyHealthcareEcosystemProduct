@@ -34,6 +34,7 @@ describe('ItemsRepository', () => {
     ownerEmail: 'owner@acme.example.com',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   beforeEach(async () => {

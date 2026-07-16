@@ -32,6 +32,7 @@ describe('TenantsRepository', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
     expect(created.slug).toBe('acme');
     expect(created.name).toBe('Acme Inc');
@@ -52,6 +53,7 @@ describe('TenantsRepository', () => {
       ownerEmail: 'owner@beta.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
 
     await expect(repository.findByIdentifier('tenant-2')).resolves.toEqual(
@@ -70,6 +72,7 @@ describe('TenantsRepository', () => {
       ownerEmail: null,
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
 
     expect(created.ownerEmail).toBeNull();
@@ -90,6 +93,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@evil.example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       }),
     ).rejects.toThrow(/unsafe schema name/i);
 
@@ -112,6 +116,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@gamma.example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       });
 
       await expect(repository.findById('tenant-4')).resolves.toEqual(created);
@@ -132,6 +137,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner-first@example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       });
 
       await expect(
@@ -145,6 +151,7 @@ describe('TenantsRepository', () => {
           ownerEmail: 'owner-second@example.com',
           adminSeedStatus: null,
           inviteStatus: null,
+          modules: [],
         }),
       ).rejects.toThrow(SlugAlreadyExistsError);
     });
@@ -162,6 +169,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@delta.example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       });
 
       const updated = await repository.updateStatus(
@@ -196,6 +204,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@list-first.example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       });
       const second = await repository.create({
         id: 'tenant-list-2',
@@ -207,6 +216,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@list-second.example.com',
         adminSeedStatus: 'succeeded',
         inviteStatus: 'succeeded',
+        modules: [],
       });
 
       // Ordering (newest-first, by `created_at`) is a display nicety, not an
@@ -232,6 +242,7 @@ describe('TenantsRepository', () => {
         ownerEmail: 'owner@epsilon.example.com',
         adminSeedStatus: null,
         inviteStatus: null,
+        modules: [],
       });
 
       const updated = await repository.updateProvisioningResult(created.id, {

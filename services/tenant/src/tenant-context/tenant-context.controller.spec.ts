@@ -14,6 +14,7 @@ describe('TenantContextController', () => {
     ownerEmail: 'owner@acme.example.com',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   const buildController = (): TenantContextController => {
@@ -35,6 +36,7 @@ describe('TenantContextController', () => {
       schemaName: 'tenant_acme',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
   });
 

@@ -28,7 +28,8 @@ export function createInMemoryPool(): Pool {
  * BAC-7 `1752105600000_add-tenant-owner-email` follow-up: the nullable
  * `owner_email` column -- and the BAC-12
  * `1752192000000_add-tenant-provisioning-result` follow-up: the nullable
- * `admin_seed_status`/`invite_status` columns).
+ * `admin_seed_status`/`invite_status` columns -- and the module-selection
+ * `1752278400000_add-tenant-modules` follow-up: the `modules text[]` column).
  */
 export async function createTenantsTable(pool: Pool): Promise<void> {
   await pool.query(`
@@ -39,6 +40,7 @@ export async function createTenantsTable(pool: Pool): Promise<void> {
       schema_name TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT '',
       plan TEXT NOT NULL DEFAULT '',
+      modules TEXT[] NOT NULL DEFAULT '{}',
       owner_email TEXT,
       admin_seed_status TEXT,
       invite_status TEXT,

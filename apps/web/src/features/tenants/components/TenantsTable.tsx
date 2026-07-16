@@ -1,5 +1,19 @@
-import type { TenantSummary } from "@hep/shared-types";
+import type { HepModule, TenantSummary } from "@hep/shared-types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { MODULE_OPTIONS } from "../moduleOptions";
 import { ProvisioningStatusBadge } from "./ProvisioningStatusBadge";
+
+const MODULE_LABEL: Record<HepModule, string> = Object.fromEntries(
+  MODULE_OPTIONS.map((option) => [option.module, option.label]),
+) as Record<HepModule, string>;
 
 export interface TenantsTableProps {
   tenants: TenantSummary[];
@@ -8,27 +22,60 @@ export interface TenantsTableProps {
 /** BAC-12, AC3: every tenant with its status and provisioning result. */
 export function TenantsTable({ tenants }: TenantsTableProps) {
   return (
-    <table className="w-full border-collapse text-left text-sm">
-      <thead>
-        <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
-          <th className="py-2 pr-4 font-medium">Name</th>
-          <th className="py-2 pr-4 font-medium">Slug</th>
-          <th className="py-2 pr-4 font-medium">Plan</th>
-          <th className="py-2 pr-4 font-medium">Status</th>
-          <th className="py-2 pr-4 font-medium">Provisioning result</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead>Slug</TableHead>
+          <TableHead>Plan</TableHead>
+          <TableHead>Modules</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Provisioning result</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {tenants.map((tenant) => (
-          <tr key={tenant.id} className="border-b border-zinc-100">
-            <td className="py-2 pr-4 font-medium text-zinc-900">
+          <TableRow key={tenant.id}>
+            <TableCell className="font-medium text-foreground">
               {tenant.name}
-            </td>
-            <td className="py-2 pr-4 text-zinc-600">{tenant.slug}</td>
-            <td className="py-2 pr-4 text-zinc-600">{tenant.plan}</td>
-            <td className="py-2 pr-4 text-zinc-600">{tenant.status}</td>
-            <td className="py-2 pr-4">
-              <div className="flex flex-col gap-1">
+            </TableCell>
+            <TableCell className="font-mono text-muted-foreground">
+              {tenant.slug}
+            </TableCell>
+            <TableCell className="text-muted-foreground">{tenant.plan}</TableCell>
+            <TableCell>
+              {tenant.modules.length === 0 ? (
+                <span className="text-xs text-muted-foreground">—</span>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {tenant.modules.map((module) => (
+                    <Badge key={module} variant="secondary" className="font-normal">
+                      {MODULE_LABEL[module] ?? module}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </TableCell>
+            <TableCell>
+              <span
+                className="inline-flex items-center gap-1.5 text-foreground"
+              >
+                <span
+                  className={
+                    "size-1.5 shrink-0 rounded-full " +
+                    (tenant.status === "active"
+                      ? "bg-success"
+                      : tenant.status === "pending"
+                        ? "bg-pending"
+                        : "bg-muted-foreground/50")
+                  }
+                  aria-hidden
+                />
+                {tenant.status}
+              </span>
+            </TableCell>
+            <TableCell>
+              <div className="flex flex-col items-start gap-1.5">
                 <ProvisioningStatusBadge
                   label="Admin seed"
                   status={tenant.adminSeedStatus}
@@ -38,10 +85,10 @@ export function TenantsTable({ tenants }: TenantsTableProps) {
                   status={tenant.inviteStatus}
                 />
               </div>
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

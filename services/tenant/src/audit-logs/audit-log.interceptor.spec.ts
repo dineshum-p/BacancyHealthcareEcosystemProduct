@@ -34,6 +34,7 @@ const tenant = {
   ownerEmail: 'owner@example.com',
   adminSeedStatus: null,
   inviteStatus: null,
+  modules: [],
 };
 
 describe('AuditLogInterceptor', () => {

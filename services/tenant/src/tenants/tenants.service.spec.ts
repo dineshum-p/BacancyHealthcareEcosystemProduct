@@ -29,6 +29,7 @@ describe('TenantsService', () => {
     ownerEmail: 'owner@acme.example.com',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   beforeEach(() => {

@@ -1,5 +1,9 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
-import type { OnboardTenantResponse, TenantSummary } from "@hep/shared-types";
+import type {
+  OnboardTenantRequest,
+  OnboardTenantResponse,
+  TenantSummary,
+} from "@hep/shared-types";
 import { setStoredAccessToken } from "../auth/session";
 import { listTenants, onboardTenant } from "./tenantsApi";
 
@@ -37,6 +41,7 @@ describe("tenantsApi", () => {
           name: "Acme",
           slug: "acme",
           plan: "starter",
+          modules: ["clinic"],
           adminEmail: "admin@acme.example.com",
         }),
       ).rejects.toThrow(/not authenticated/i);
@@ -60,6 +65,7 @@ describe("tenantsApi", () => {
           schemaName: "tenant_acme",
           adminSeedStatus: "succeeded",
           inviteStatus: "succeeded",
+          modules: [],
         },
       ];
       vi.mocked(fetch).mockResolvedValue(
@@ -104,6 +110,7 @@ describe("tenantsApi", () => {
           schemaName: "tenant_acme",
           adminSeedStatus: "failed",
           inviteStatus: "skipped",
+          modules: [],
         },
         adminSeed: { status: "failed", message: "email already registered" },
         invite: { status: "skipped" },
@@ -112,10 +119,11 @@ describe("tenantsApi", () => {
         new Response(JSON.stringify(response), { status: 201 }),
       );
 
-      const input = {
+      const input: OnboardTenantRequest = {
         name: "Acme",
         slug: "acme",
         plan: "starter",
+        modules: ["clinic"],
         adminEmail: "admin@acme.example.com",
       };
       const result = await onboardTenant(input);
@@ -143,6 +151,7 @@ describe("tenantsApi", () => {
           name: "Acme",
           slug: "acme",
           plan: "starter",
+          modules: ["clinic"],
           adminEmail: "admin@acme.example.com",
         }),
       ).rejects.toThrow("slug already taken");

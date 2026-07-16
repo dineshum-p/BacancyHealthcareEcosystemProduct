@@ -1,10 +1,15 @@
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsString,
   Matches,
   MaxLength,
 } from 'class-validator';
+import type { HepModule, PlanTier } from '@hep/shared-types';
+import { ALL_MODULES, ALL_PLAN_TIERS } from '../../pricing/module-catalog';
 
 /**
  * Same kebab-case constraint as `CreateTenantDto.slug` -- see that file's
@@ -38,10 +43,29 @@ export class OnboardTenantDto {
   })
   slug!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
-  plan!: string;
+  /**
+   * Subscription tier (PRD 6.2): now a closed set of the three platform
+   * tiers, since the onboarding form drives the monthly platform base fee
+   * off it -- unlike the plain `POST /tenants` bootstrap endpoint, whose
+   * `plan` stays free-text for backward compatibility with pre-existing rows.
+   */
+  @IsIn(ALL_PLAN_TIERS, {
+    message: `plan must be one of: ${ALL_PLAN_TIERS.join(', ')}`,
+  })
+  plan!: PlanTier;
+
+  /**
+   * The product modules this tenant is subscribing to (PRD Section 3/6). At
+   * least one is required; each must be a known module. Drives both the
+   * tenant's granted module access and its computed pricing.
+   */
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Select at least one module.' })
+  @IsIn(ALL_MODULES, {
+    each: true,
+    message: `each module must be one of: ${ALL_MODULES.join(', ')}`,
+  })
+  modules!: HepModule[];
 
   @IsEmail()
   @MaxLength(320)

@@ -61,6 +61,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 
@@ -79,6 +80,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 
@@ -100,6 +102,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 
@@ -123,6 +126,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 
@@ -141,6 +145,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 
@@ -166,6 +171,7 @@ describe('TenantContextService', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     const service = new TenantContextService(request, pool);
 

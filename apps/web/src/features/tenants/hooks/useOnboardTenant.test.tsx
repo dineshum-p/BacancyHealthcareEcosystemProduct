@@ -24,6 +24,7 @@ const RESPONSE: OnboardTenantResponse = {
     schemaName: "tenant_acme",
     adminSeedStatus: "succeeded",
     inviteStatus: "succeeded",
+    modules: [],
   },
   adminSeed: { status: "succeeded" },
   invite: { status: "succeeded" },
@@ -39,6 +40,7 @@ function Probe() {
             name: "Acme",
             slug: "acme",
             plan: "starter",
+            modules: ["clinic"],
             adminEmail: "admin@acme.example.com",
           })
         }
@@ -68,6 +70,7 @@ describe("useOnboardTenant", () => {
       name: "Acme",
       slug: "acme",
       plan: "starter",
+      modules: ["clinic"],
       adminEmail: "admin@acme.example.com",
     });
   });

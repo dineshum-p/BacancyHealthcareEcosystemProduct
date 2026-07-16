@@ -1,4 +1,4 @@
-import type { ProvisioningStepStatus } from '@hep/shared-types';
+import type { HepModule, ProvisioningStepStatus } from '@hep/shared-types';
 import { TenantStatus } from './tenant-status.enum';
 
 /**
@@ -14,6 +14,13 @@ export interface Tenant {
   name: string;
   /** Subscription/billing plan identifier supplied at onboarding (BAC-3). */
   plan: string;
+  /**
+   * Product modules this tenant is granted access to (PRD Section 3/6),
+   * selected at onboarding. Empty for tenants created via the plain
+   * `POST /tenants` bootstrap endpoint that predates module selection (see
+   * the `..._add-tenant-modules` migration).
+   */
+  modules: HepModule[];
   status: TenantStatus;
   schemaName: string;
   /**
