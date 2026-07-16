@@ -5,6 +5,13 @@ import { setStoredAccessToken } from "@/src/lib/auth/session";
 import * as useTenantsModule from "./hooks/useTenants";
 import { TenantsListPage } from "./TenantsListPage";
 
+// TenantsListPage renders inside ConsoleShell, which reads usePathname() and
+// calls router.replace() on sign-out; stub next/navigation for jsdom.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/admin/tenants",
+}));
+
 function fakeJwt(payload: object): string {
   const base64url = (value: unknown) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -85,6 +92,7 @@ describe("TenantsListPage", () => {
           schemaName: "tenant_acme",
           adminSeedStatus: "succeeded",
           inviteStatus: "failed",
+          modules: [],
         },
       ];
       mockUseTenants({ data: tenants });

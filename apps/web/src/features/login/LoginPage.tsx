@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AuthTokens } from "@hep/shared-types";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Wordmark } from "@/src/components/brand/Wordmark";
 import { useCurrentUser } from "@/src/lib/auth/useCurrentUser";
 import { resolveDashboardPath } from "@/src/lib/auth/dashboardPath";
 import { completeLogin } from "./completeLogin";
@@ -97,25 +99,39 @@ function LoginFlow({ onAuthenticated }: LoginFlowProps) {
   const error = challenge ? verifyMutation.error : loginMutation.error;
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-8 py-10">
-      <h1 className="text-xl font-semibold text-zinc-900">Sign in</h1>
+    <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-background px-6 py-16">
+      <Wordmark />
 
-      {challenge ? (
-        <MfaChallengeForm
-          onSubmit={handleMfaSubmit}
-          isSubmitting={isSubmitting}
-        />
-      ) : (
-        <LoginForm onSubmit={handleLoginSubmit} isSubmitting={isSubmitting} />
-      )}
+      <Card className="w-full max-w-sm border-border/70 shadow-sm">
+        <CardHeader className="pb-2">
+          <h1 className="font-heading text-lg font-semibold text-foreground">
+            {challenge ? "Verify it's you" : "Sign in"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {challenge
+              ? "Enter the code from your authenticator app to finish signing in."
+              : "Enter your workspace and credentials to continue."}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {challenge ? (
+            <MfaChallengeForm
+              onSubmit={handleMfaSubmit}
+              isSubmitting={isSubmitting}
+            />
+          ) : (
+            <LoginForm onSubmit={handleLoginSubmit} isSubmitting={isSubmitting} />
+          )}
 
-      {isError && (
-        <p className="max-w-sm text-sm text-red-700">
-          {error instanceof Error
-            ? error.message
-            : "Something went wrong. Please try again."}
-        </p>
-      )}
+          {isError && (
+            <p className="mt-4 text-sm text-destructive">
+              {error instanceof Error
+                ? error.message
+                : "Something went wrong. Please try again."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

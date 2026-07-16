@@ -3,6 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /**
  * Mirrors `services/auth`'s `LoginDto` constraints (BAC-5) for fast
@@ -50,13 +53,14 @@ export function LoginForm({ onSubmit, isSubmitting }: LoginFormProps) {
 
   return (
     <form
-      className="flex w-full max-w-sm flex-col gap-4"
+      className="flex w-full flex-col gap-5"
       onSubmit={(event) => void handleSubmit(onSubmit)(event)}
       noValidate
     >
       <Field
         id="tenantId"
         label="Workspace"
+        placeholder="acme-clinic"
         error={errors.tenantId?.message}
         inputProps={register("tenantId")}
       />
@@ -64,6 +68,7 @@ export function LoginForm({ onSubmit, isSubmitting }: LoginFormProps) {
         id="email"
         label="Email"
         type="email"
+        placeholder="you@example.com"
         error={errors.email?.message}
         inputProps={register("email")}
       />
@@ -75,13 +80,9 @@ export function LoginForm({ onSubmit, isSubmitting }: LoginFormProps) {
         inputProps={register("password")}
       />
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
+      <Button type="submit" disabled={isSubmitting} className="mt-1 w-full">
         {isSubmitting ? "Signing in…" : "Sign in"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -90,23 +91,24 @@ interface FieldProps {
   id: string;
   label: string;
   type?: string;
+  placeholder?: string;
   error?: string;
   inputProps: ReturnType<ReturnType<typeof useForm<LoginFormValues>>["register"]>;
 }
 
-function Field({ id, label, type = "text", error, inputProps }: FieldProps) {
+function Field({ id, label, type = "text", placeholder, error, inputProps }: FieldProps) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-zinc-800">
-        {label}
-      </label>
-      <input
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
         id={id}
         type={type}
-        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+        placeholder={placeholder}
+        aria-invalid={Boolean(error)}
+        className="h-10"
         {...inputProps}
       />
-      {error && <p className="text-xs text-red-700">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

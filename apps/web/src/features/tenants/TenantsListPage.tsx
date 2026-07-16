@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { RequireRole } from "@/src/components/auth/RequireRole";
+import { ConsoleShell } from "@/src/components/layout/ConsoleShell";
 import { useTenants } from "./hooks/useTenants";
 import { TenantsTable } from "./components/TenantsTable";
 
@@ -9,7 +11,9 @@ import { TenantsTable } from "./components/TenantsTable";
 export function TenantsListPage() {
   return (
     <RequireRole allow={["super_admin"]}>
-      <TenantsListContent />
+      <ConsoleShell>
+        <TenantsListContent />
+      </ConsoleShell>
     </RequireRole>
   );
 }
@@ -20,31 +24,37 @@ function TenantsListContent() {
   return (
     <div className="flex flex-1 flex-col gap-6 px-8 py-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-zinc-900">Tenants</h1>
+        <h1 className="font-heading text-2xl font-semibold text-foreground">
+          Tenants
+        </h1>
         <Link
           href="/admin/tenants/onboard"
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+          className={buttonVariants({ variant: "default" })}
         >
           Onboard tenant
         </Link>
       </div>
 
-      {isLoading && <p className="text-sm text-zinc-600">Loading tenants…</p>}
+      {isLoading && (
+        <p className="text-sm text-muted-foreground">Loading tenants…</p>
+      )}
 
       {isError && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-destructive">
           Couldn&apos;t load tenants. Please try again.
         </p>
       )}
 
       {!isLoading && !isError && tenants && tenants.length === 0 && (
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-muted-foreground">
           No tenants yet. Onboard your first tenant to get started.
         </p>
       )}
 
       {!isLoading && !isError && tenants && tenants.length > 0 && (
-        <TenantsTable tenants={tenants} />
+        <div className="overflow-hidden rounded-xl border border-border/70">
+          <TenantsTable tenants={tenants} />
+        </div>
       )}
     </div>
   );

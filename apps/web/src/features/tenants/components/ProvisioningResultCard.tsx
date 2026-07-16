@@ -1,4 +1,5 @@
 import type { OnboardTenantResponse } from "@hep/shared-types";
+import { Card, CardContent } from "@/components/ui/card";
 import { ProvisioningStatusBadge } from "./ProvisioningStatusBadge";
 
 export interface ProvisioningResultCardProps {
@@ -21,37 +22,44 @@ export function ProvisioningResultCard({
     adminSeed.status !== "succeeded" || invite.status !== "succeeded";
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-zinc-200 p-4">
-      <div>
-        <p className="text-sm font-semibold text-zinc-900">{tenant.name}</p>
-        <p className="text-xs text-zinc-600">
-          Tenant status: <span className="font-medium">{tenant.status}</span>
-        </p>
-      </div>
-
-      {hasPartialFailure && (
-        <p className="text-sm font-medium text-amber-700">
-          Tenant provisioned, but onboarding completed with partial failures.
-        </p>
-      )}
-
-      <div className="flex flex-col gap-2">
+    <Card className="max-w-md border-border/70">
+      <CardContent className="flex flex-col gap-4">
         <div>
-          <ProvisioningStatusBadge
-            label="Admin seed"
-            status={adminSeed.status}
-          />
-          {adminSeed.message && (
-            <p className="mt-1 text-xs text-zinc-600">{adminSeed.message}</p>
-          )}
+          <p className="font-heading text-base font-semibold text-foreground">
+            {tenant.name}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Tenant status:{" "}
+            <span className="font-mono font-medium text-foreground">
+              {tenant.status}
+            </span>
+          </p>
         </div>
-        <div>
-          <ProvisioningStatusBadge label="Invite" status={invite.status} />
-          {invite.message && (
-            <p className="mt-1 text-xs text-zinc-600">{invite.message}</p>
-          )}
+
+        {hasPartialFailure && (
+          <p className="rounded-md bg-pending/10 px-3 py-2 text-sm font-medium text-pending">
+            Tenant provisioned, but onboarding completed with partial failures.
+          </p>
+        )}
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col items-start gap-1">
+            <ProvisioningStatusBadge
+              label="Admin seed"
+              status={adminSeed.status}
+            />
+            {adminSeed.message && (
+              <p className="text-xs text-muted-foreground">{adminSeed.message}</p>
+            )}
+          </div>
+          <div className="flex flex-col items-start gap-1">
+            <ProvisioningStatusBadge label="Invite" status={invite.status} />
+            {invite.message && (
+              <p className="text-xs text-muted-foreground">{invite.message}</p>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
