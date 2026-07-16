@@ -1,0 +1,468 @@
+{
+  "info": {
+    "name": "HEP - All Services",
+    "description": "Every REST endpoint across all 6 HEP backend services (tenant, auth, emr, notification, billing, patient), matching the code as of the current session. Assumes all 6 services are running locally against ONE shared Postgres (see scripts/start-all-local.sh) on ports 3001-3006 (apps/web owns port 3000).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "tenantBaseUrl", "value": "http://localhost:3001" },
+    { "key": "authBaseUrl", "value": "http://localhost:3002" },
+    { "key": "emrBaseUrl", "value": "http://localhost:3003" },
+    { "key": "notificationBaseUrl", "value": "http://localhost:3004" },
+    { "key": "billingBaseUrl", "value": "http://localhost:3005" },
+    { "key": "patientBaseUrl", "value": "http://localhost:3006" },
+
+    { "key": "tenantSlug", "value": "acme-clinic" },
+    { "key": "ownerEmail", "value": "owner@acme-clinic.com" },
+    { "key": "ownerPassword", "value": "Passw0rd!23" },
+
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "mfaChallengeToken", "value": "" },
+
+    { "key": "internalServiceKey", "value": "dev-insecure-internal-service-key-change-me" },
+
+    { "key": "tenantId", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "patientId", "value": "" },
+    { "key": "emrPatientId", "value": "" },
+    { "key": "encounterId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "tenant (:3000)",
+      "item": [
+        {
+          "name": "Create tenant (bootstrap, unauthenticated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{tenantBaseUrl}}/tenants",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Clinic\",\n  \"slug\": \"{{tenantSlug}}\",\n  \"plan\": \"starter\",\n  \"ownerEmail\": \"{{ownerEmail}}\"\n}"
+            },
+            "description": "Creates a tenant as PENDING, provisions its schema, flips it ACTIVE. ownerEmail is the ONE address that auto-becomes super_admin on first /auth/register."
+          }
+        },
+        {
+          "name": "Get tenant by id (unauthenticated)",
+          "request": {
+            "method": "GET",
+            "url": "{{tenantBaseUrl}}/tenants/{{tenantId}}"
+          }
+        },
+        {
+          "name": "[Super Admin console] List all tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{tenantBaseUrl}}/tenants",
+            "description": "Requires role=super_admin. Guards: TenantGuard, AccessTokenGuard, SuperAdminGuard."
+          }
+        },
+        {
+          "name": "[Super Admin console] Onboard a new tenant end-to-end",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{tenantBaseUrl}}/tenants/onboard",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"City Pharmacy\",\n  \"slug\": \"city-pharmacy\",\n  \"plan\": \"starter\",\n  \"adminEmail\": \"admin@city-pharmacy.com\"\n}"
+            },
+            "description": "Creates the tenant, seeds a clinic_admin via services/auth's internal admin-seed endpoint, and queues an invite via services/notification. Requires the CALLER to already be a super_admin of their own (different) tenant."
+          }
+        },
+        {
+          "name": "Get resolved tenant context (me)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }],
+            "url": "{{tenantBaseUrl}}/tenant-context/me"
+          }
+        },
+        {
+          "name": "List items (sample table)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }],
+            "url": "{{tenantBaseUrl}}/items"
+          }
+        },
+        {
+          "name": "Create item (sample table)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{tenantBaseUrl}}/items",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sample item\"\n}" }
+          }
+        },
+        {
+          "name": "List audit logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{tenantBaseUrl}}/audit-logs?page=1&limit=20",
+              "host": ["{{tenantBaseUrl}}"],
+              "path": ["audit-logs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "actor", "value": "", "disabled": true },
+                { "key": "resourceType", "value": "", "disabled": true },
+                { "key": "resourceId", "value": "", "disabled": true }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth (:3001)",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "description": "First registration whose email matches the tenant's ownerEmail auto-becomes super_admin; every other registration gets staff."
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "description": "Returns {accessToken, refreshToken, expiresIn} if MFA is off, or {mfaRequired: true, mfaChallengeToken} if MFA is active."
+          }
+        },
+        {
+          "name": "[internal] Seed clinic admin (admin-seed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "X-Internal-Service-Key", "value": "{{internalServiceKey}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/admin-seed",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@city-pharmacy.com\"\n}" },
+            "description": "Machine-to-machine only -- called by services/tenant's onboarding flow, never by a browser. Role is always clinic_admin; password is server-generated."
+          }
+        },
+        {
+          "name": "Refresh access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          }
+        },
+        {
+          "name": "MFA - enroll",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/mfa/enroll",
+            "description": "Returns {secret, otpauthUrl}. Compute the current 6-digit TOTP code from `secret` to complete enrollment below."
+          }
+        },
+        {
+          "name": "MFA - verify enrollment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/mfa/verify",
+            "body": { "mode": "raw", "raw": "{\n  \"totpCode\": \"123456\"\n}" },
+            "description": "Activates MFA and returns one-time recovery codes."
+          }
+        },
+        {
+          "name": "MFA - complete login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/mfa/login-verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mfaChallengeToken\": \"{{mfaChallengeToken}}\",\n  \"totpCode\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List roles + permissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/roles"
+          }
+        },
+        {
+          "name": "Update a user's role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{authBaseUrl}}/auth/users/{{userId}}/role",
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"provider\"\n}" },
+            "description": "role must be one of: super_admin | clinic_admin | provider | staff. Caller needs MANAGE_USER_ROLES (super_admin/clinic_admin)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "emr (:3002)",
+      "item": [
+        {
+          "name": "Create FHIR Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{emrBaseUrl}}/fhir/Patient",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Patient\",\n  \"name\": [{ \"family\": \"Doe\", \"given\": [\"Jane\"] }],\n  \"gender\": \"female\",\n  \"birthDate\": \"1990-05-12\",\n  \"telecom\": [{ \"system\": \"phone\", \"value\": \"555-0100\" }]\n}"
+            },
+            "description": "Requires WRITE_PATIENT permission. Malformed FHIR returns an OperationOutcome, not a generic error."
+          }
+        },
+        {
+          "name": "Get FHIR Patient by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{emrBaseUrl}}/fhir/Patient/{{emrPatientId}}",
+            "description": "Requires READ_PATIENT permission."
+          }
+        },
+        {
+          "name": "Create encounter (SOAP note + vitals + allergies)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{emrBaseUrl}}/patients/{{emrPatientId}}/encounters",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"soapNote\": {\n    \"subjective\": \"Patient reports mild headache for 2 days.\",\n    \"objective\": \"Alert, oriented. No focal deficits.\",\n    \"assessment\": \"Tension headache.\",\n    \"plan\": \"OTC analgesics, follow up in 1 week if unresolved.\"\n  },\n  \"vitals\": {\n    \"heartRate\": 72,\n    \"bloodPressureSystolic\": 118,\n    \"bloodPressureDiastolic\": 76,\n    \"temperature\": 36.8,\n    \"respiratoryRate\": 16,\n    \"spO2\": 98\n  },\n  \"allergies\": [\n    { \"substance\": \"Penicillin\", \"reaction\": \"Rash\", \"severity\": \"moderate\" }\n  ]\n}"
+            },
+            "description": "Requires WRITE_ENCOUNTER permission. vitals/allergies are optional; soapNote's 4 fields are all required."
+          }
+        },
+        {
+          "name": "List encounters for a patient",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{emrBaseUrl}}/patients/{{emrPatientId}}/encounters",
+            "description": "Requires READ_ENCOUNTER permission."
+          }
+        }
+      ]
+    },
+    {
+      "name": "notification (:3003)",
+      "item": [
+        {
+          "name": "Send notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{notificationBaseUrl}}/notifications",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"email\",\n  \"to\": \"patient@example.com\",\n  \"templateId\": \"appointment-reminder\",\n  \"data\": { \"patientName\": \"Jane Doe\", \"appointmentTime\": \"2026-07-20 10:00\" }\n}"
+            },
+            "description": "channel is 'sms' or 'email'. Uses the FAKE provider adapter by default (NOTIFICATION_PROVIDER_MODE=fake) -- no real SMS/email is sent."
+          }
+        },
+        {
+          "name": "[internal] Send notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "X-Internal-Service-Key", "value": "{{internalServiceKey}}" }
+            ],
+            "url": "{{notificationBaseUrl}}/notifications/internal",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"email\",\n  \"to\": \"admin@city-pharmacy.com\",\n  \"templateId\": \"admin-invite\",\n  \"data\": { \"tenantName\": \"City Pharmacy\" }\n}"
+            },
+            "description": "Machine-to-machine only -- called by services/tenant's onboarding flow (invite email), not by a user's bearer token."
+          }
+        },
+        {
+          "name": "Get notification by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{notificationBaseUrl}}/notifications/{{encounterId}}",
+            "description": "Replace the id in the URL with a real notification id returned from 'Send notification' above."
+          }
+        }
+      ]
+    },
+    {
+      "name": "billing (:3004)",
+      "item": [
+        {
+          "name": "Record a billable usage event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{billingBaseUrl}}/billing/usage/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventId\": \"{{$guid}}\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"metric\": \"patient.created\",\n  \"quantity\": 1,\n  \"occurredAt\": \"2026-07-15T10:00:00.000Z\"\n}"
+            },
+            "description": "metric must be one of: patient.created | encounter.created. eventId is the idempotency key -- resending the same eventId never double-counts. Requires RECORD_USAGE permission."
+          }
+        },
+        {
+          "name": "Get usage summary for a billing period",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{billingBaseUrl}}/billing/usage?tenantId={{tenantId}}&period=2026-07",
+              "host": ["{{billingBaseUrl}}"],
+              "path": ["billing", "usage"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenantId}}" },
+                { "key": "period", "value": "2026-07" }
+              ]
+            },
+            "description": "period is YYYY-MM (calendar month, UTC). Requires READ_USAGE permission."
+          }
+        }
+      ]
+    },
+    {
+      "name": "patient (:3005)",
+      "item": [
+        {
+          "name": "Register patient (MRN assigned)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{patientBaseUrl}}/patients",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"dateOfBirth\": \"1990-05-12\",\n  \"gender\": \"female\",\n  \"phone\": \"555-0100\",\n  \"email\": \"jane.doe@example.com\"\n}"
+            },
+            "description": "gender/phone/email are optional. Requires WRITE_PATIENT permission. Assigns a unique MRN and duplicate-detects."
+          }
+        },
+        {
+          "name": "Search patients",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-Id", "value": "{{tenantSlug}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{patientBaseUrl}}/patients?page=1&limit=20",
+              "host": ["{{patientBaseUrl}}"],
+              "path": ["patients"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "name", "value": "", "disabled": true },
+                { "key": "mrn", "value": "", "disabled": true },
+                { "key": "dateOfBirth", "value": "", "disabled": true }
+              ]
+            },
+            "description": "All query params optional and combinable. Requires READ_PATIENT permission."
+          }
+        }
+      ]
+    }
+  ]
+}
