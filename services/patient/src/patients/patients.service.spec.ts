@@ -205,5 +205,47 @@ describe('PatientsService', () => {
         { page: 2, limit: 5 },
       );
     });
+
+    /**
+     * BAC-17 (qa-tester off-by-one regression): `pg`'s runtime type parser
+     * for a `date` column (`postgres-date`'s `getDate`, registered for OID
+     * 1082) renders `YYYY-MM-DD` as a *local-midnight* `Date` -- i.e.
+     * `new Date(year, month, day)`, NOT `new Date('...T00:00:00.000Z')` --
+     * despite `PatientRecord.dateOfBirth`'s `string` type annotation lying
+     * about the runtime shape. Every other test in this file mocks the
+     * repository with a UTC-constructed `Date` (`new Date('...Z')`), which
+     * masks that mismatch: `.toISOString()` on a UTC-midnight `Date` always
+     * round-trips to the same calendar date regardless of the host's
+     * timezone. This test instead mocks the record the way `pg` actually
+     * returns it, reproducing the real bug: in any timezone ahead of UTC
+     * (e.g. the CI/dev default, IST/UTC+5:30), local midnight shifts to the
+     * *previous* UTC day, so `toSummary`'s old `value.toISOString().slice(0,
+     * 10)` rendered `1990-05-11` for a patient actually born `1990-05-12`.
+     */
+    it('renders a local-midnight Date (as pg returns for a `date` column) as the same calendar date, not shifted by the host timezone', async () => {
+      const search = jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: 'patient-1',
+            mrn: 'MRN-000001',
+            firstName: 'Jane',
+            lastName: 'Doe',
+            // Mirrors `postgres-date`'s `getDate`: `new Date(year, month, day)`.
+            dateOfBirth: new Date(1990, 4, 12),
+            gender: 'female',
+            phone: null,
+            email: null,
+            createdAt: new Date('2026-07-14T00:00:00.000Z'),
+            updatedAt: new Date('2026-07-14T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      });
+      const { service } = makeService({ search });
+
+      const result = await service.search('tenant-1', 'acme', {});
+
+      expect(result.items[0].dateOfBirth).toBe('1990-05-12');
+    });
   });
 });
