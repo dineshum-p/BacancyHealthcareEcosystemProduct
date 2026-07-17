@@ -47,6 +47,16 @@ describe("PatientSearchPage", () => {
       );
     });
 
+    it("hides the register-patient link for a role without write_patient (AC4)", () => {
+      mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.queryByRole("link", { name: /register patient/i }),
+      ).not.toBeInTheDocument();
+    });
+
     it("shows a loading state while searching (AC2)", () => {
       mockUseSearchPatients({ isLoading: true });
 
@@ -116,6 +126,24 @@ describe("PatientSearchPage", () => {
       const lastCall =
         vi.mocked(useSearchPatientsModule.useSearchPatients).mock.calls.at(-1);
       expect(lastCall?.[0]).toEqual({ name: "Jane", page: 1 });
+    });
+  });
+
+  describe("as a provider (has write_patient)", () => {
+    beforeEach(() => {
+      setStoredAccessToken(
+        fakeJwt({ userId: "u1", tenantId: "t1", role: "provider" }),
+      );
+    });
+
+    it("shows a link to the register-patient page (AC1/AC4)", () => {
+      mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.getByRole("link", { name: /register patient/i }),
+      ).toHaveAttribute("href", "/patients/register");
     });
   });
 });
