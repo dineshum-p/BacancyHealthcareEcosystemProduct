@@ -49,7 +49,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
 import { AdminSeedDto } from './dto/admin-seed.dto';
-import { generateRandomPassword } from './random-password.util';
+import { resolveSeedAdminPassword } from './seed-admin-password.util';
 
 /** Uniform message for every credential-related failure (AC3). */
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.';
@@ -179,14 +179,17 @@ export class AuthService {
    *      self-service endpoint (letting any anonymous registrant request a
    *      privileged role).
    *
-   * `passwordHash` is a securely random, unguessable placeholder
-   * (`generateRandomPassword`) that is never logged, never returned in any
-   * response, and never included in the invite notification -- only its
-   * Argon2 hash is persisted. A password-reset/invite-redemption flow that
-   * would let this account actually log in is explicitly OUT OF SCOPE for
-   * BAC-12 (documented here, not silently omitted -- see
-   * `random-password.util.ts`'s doc comment), mirroring how BAC-6 already
-   * left MFA recovery-code redemption unimplemented for the same reason.
+   * `passwordHash` hashes the password from `resolveSeedAdminPassword`: a
+   * known, committed dev password (`Test@123`) ONLY under `test`/
+   * `development`, so a freshly-onboarded tenant admin can be logged into
+   * locally; an unguessable random placeholder in every real deployment
+   * (see `seed-admin-password.util.ts`). Either way the raw value is never
+   * logged, never returned in any response, and never included in the invite
+   * notification -- only its Argon2 hash is persisted. A password-reset/
+   * invite-redemption flow that would let a PRODUCTION-seeded account log in
+   * is still explicitly OUT OF SCOPE for BAC-12 (documented here, not
+   * silently omitted), mirroring how BAC-6 left MFA recovery-code redemption
+   * unimplemented for the same reason.
    *
    * A duplicate email (e.g. retrying onboarding after a prior partial
    * failure, or a tenant onboarded with an email that already exists in its
@@ -198,7 +201,7 @@ export class AuthService {
   async seedClinicAdmin(dto: AdminSeedDto): Promise<RegisteredUser> {
     await this.ensureSchema();
     const email = normalizeEmail(dto.email);
-    const passwordHash = await hashPassword(generateRandomPassword());
+    const passwordHash = await hashPassword(resolveSeedAdminPassword());
 
     try {
       const user = await this.usersRepository.create({

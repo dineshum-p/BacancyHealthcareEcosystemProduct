@@ -18,7 +18,7 @@ import { UserRole } from './user-role.enum';
 import { MfaStatus } from './mfa-status.enum';
 import { User } from './user.entity';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
-import { hashPassword } from './password-hasher.util';
+import { hashPassword, verifyPassword } from './password-hasher.util';
 import { encryptTotpSecret } from './totp-secret-cipher.util';
 import { currentTotpStep, generateTotpSecret } from './totp.util';
 import { verifyRecoveryCode } from './recovery-code.util';
@@ -305,7 +305,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('stores an argon2 hash of a securely random password, never a caller-supplied one', async () => {
+    it('stores an argon2 hash of the seed password, never a caller-supplied one', async () => {
       usersRepository.create.mockImplementation((user) =>
         Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
       );
@@ -314,6 +314,21 @@ describe('AuthService', () => {
 
       const [createArg] = usersRepository.create.mock.calls[0];
       expect(createArg.passwordHash.startsWith('$argon2')).toBe(true);
+    });
+
+    it('hashes the known dev seed password under test/development so the admin can log in', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.seedClinicAdmin(dto);
+
+      const [createArg] = usersRepository.create.mock.calls[0];
+      // Jest runs with NODE_ENV=test, so the seeded hash must verify against
+      // the committed dev password (DEV_SEED_ADMIN_PASSWORD = 'Test@123').
+      await expect(
+        verifyPassword(createArg.passwordHash, 'Test@123'),
+      ).resolves.toBe(true);
     });
 
     it('never returns the password hash', async () => {
