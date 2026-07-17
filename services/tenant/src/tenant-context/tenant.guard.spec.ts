@@ -60,6 +60,7 @@ describe('TenantGuard', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
     const request = {
       headers: { 'x-tenant-id': 'acme' },
@@ -82,6 +83,7 @@ describe('TenantGuard', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
     const request = {
       headers: { 'x-tenant-id': 'acme' },
@@ -104,6 +106,7 @@ describe('TenantGuard', () => {
       ownerEmail: 'owner@acme.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     };
     tenantsRepository.findByIdentifier.mockResolvedValue(tenant);
     const request = {

@@ -179,6 +179,7 @@ describe('Tenant provisioning (e2e)', () => {
       ownerEmail: 'owner@transition.example.com',
       adminSeedStatus: null,
       inviteStatus: null,
+      modules: [],
     });
 
     const whilePending = await request(app.getHttpServer())

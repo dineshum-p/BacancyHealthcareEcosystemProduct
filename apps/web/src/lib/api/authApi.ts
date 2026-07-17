@@ -3,12 +3,11 @@ import type { AuthTokens, LoginResult } from "@hep/shared-types";
 /**
  * `services/auth`'s base URL (BAC-13). MUST be overridden outside local dev
  * via `NEXT_PUBLIC_AUTH_SERVICE_URL` -- the fallback below matches that
- * service's own dev-only default port (`services/auth/src/main.ts`,
- * `PORT ?? 3001`), mirroring `tenantsApi.ts`'s "dev-only fallback baked in"
- * convention.
+ * service's assigned local port (`scripts/start-all-local.sh`), mirroring
+ * `tenantsApi.ts`'s "dev-only fallback baked in" convention.
  */
 const AUTH_SERVICE_URL =
-  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:3001";
+  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:3002";
 
 /** Reads `message` off a Nest-shaped JSON error body, falling back to the HTTP status text. */
 async function readErrorMessage(response: Response): Promise<string> {

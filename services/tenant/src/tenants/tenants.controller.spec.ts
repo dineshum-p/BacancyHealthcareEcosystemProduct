@@ -18,6 +18,7 @@ describe('TenantsController', () => {
     ownerEmail: 'owner@acme.example.com',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   beforeEach(() => {
@@ -37,6 +38,7 @@ describe('TenantsController', () => {
     schemaName: 'tenant_acme',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   it('delegates tenant creation to the service', async () => {

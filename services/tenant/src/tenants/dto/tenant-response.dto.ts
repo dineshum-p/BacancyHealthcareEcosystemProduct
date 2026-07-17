@@ -1,4 +1,4 @@
-import type { ProvisioningStepStatus } from '@hep/shared-types';
+import type { HepModule, ProvisioningStepStatus } from '@hep/shared-types';
 import { Tenant } from '../tenant.entity';
 import { TenantStatus } from '../tenant-status.enum';
 
@@ -34,6 +34,8 @@ export interface TenantResponseDto {
   slug: string;
   name: string;
   plan: string;
+  /** Product modules this tenant is granted (PRD Section 3/6). Safe to expose: carries no secret. */
+  modules: HepModule[];
   status: TenantStatus;
   schemaName: string;
   /**
@@ -53,6 +55,7 @@ export function toTenantResponseDto(tenant: Tenant): TenantResponseDto {
     slug: tenant.slug,
     name: tenant.name,
     plan: tenant.plan,
+    modules: tenant.modules,
     status: tenant.status,
     schemaName: tenant.schemaName,
     adminSeedStatus: tenant.adminSeedStatus,

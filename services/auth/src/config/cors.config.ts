@@ -1,20 +1,15 @@
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 /**
- * Dev-only fallback allowed origins (BAC-13 bug fix, mirrors `services/tenant`'s
- * `src/config/cors.config.ts` from BAC-12): `apps/web`'s own dev server
- * defaults to port 3000, but that's also this service's own default port
- * (`main.ts`, `PORT ?? 3001`), so in practice a locally-run frontend ends up
- * on the next free port (commonly 3001-3002) instead. Rather than hard-code
- * one guess, allow this small, well-known set of local dev origins out of the
- * box; real deployments MUST override via `CORS_ALLOWED_ORIGINS`
+ * Dev-only fallback allowed origin (BAC-13 bug fix, mirrors
+ * `services/tenant`'s `src/config/cors.config.ts` from BAC-12): `apps/web`'s
+ * dev server is pinned to port 3000 (`apps/web/package.json`'s `dev`
+ * script), while every backend service claims a fixed port starting from
+ * 3001 (see `scripts/start-all-local.sh`) so it never collides with the
+ * frontend. Real deployments MUST override via `CORS_ALLOWED_ORIGINS`
  * (comma-separated) same as every other env-driven config in this service.
  */
-const DEV_DEFAULT_ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-];
+const DEV_DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000'];
 
 /**
  * Methods the browser calls on this service. `apps/web`'s `authApi.ts` only

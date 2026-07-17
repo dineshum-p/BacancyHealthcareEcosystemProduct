@@ -3,6 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /** Mirrors `services/auth`'s `MfaLoginVerifyDto.totpCode` pattern (BAC-6) for fast client-side feedback. */
 const mfaChallengeSchema = z.object({
@@ -37,39 +40,32 @@ export function MfaChallengeForm({
 
   return (
     <form
-      className="flex w-full max-w-sm flex-col gap-4"
+      className="flex w-full flex-col gap-5"
       onSubmit={(event) =>
         void handleSubmit((values) => onSubmit(values.totpCode))(event)
       }
       noValidate
     >
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="totpCode"
-          className="text-sm font-medium text-zinc-800"
-        >
-          Authentication code
-        </label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="totpCode">Authentication code</Label>
+        <Input
           id="totpCode"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+          placeholder="000000"
+          aria-invalid={Boolean(errors.totpCode?.message)}
+          className="h-10 font-mono tracking-[0.3em]"
           {...register("totpCode")}
         />
         {errors.totpCode?.message && (
-          <p className="text-xs text-red-700">{errors.totpCode.message}</p>
+          <p className="text-xs text-destructive">{errors.totpCode.message}</p>
         )}
       </div>
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
+      <Button type="submit" disabled={isSubmitting} className="mt-1 w-full">
         {isSubmitting ? "Verifying…" : "Verify"}
-      </button>
+      </Button>
     </form>
   );
 }

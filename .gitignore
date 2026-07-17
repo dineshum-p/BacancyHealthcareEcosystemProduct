@@ -5,3 +5,7 @@ coverage/
 *.tsbuildinfo
 # Pipeline runtime state is machine-generated; don't commit it
 .claude/state/
+# Local env files (real secrets stay local; *.env.example is tracked)
+.env
+# Playwright MCP session artifacts (screenshots, snapshots, console logs)
+.playwright-mcp/

@@ -590,6 +590,14 @@ export interface TenantSummary {
   plan: string;
   status: TenantStatus;
   schemaName: string;
+  /**
+   * The product modules this tenant has been granted access to (PRD Section
+   * 3/6). Selected at onboarding time; drives both feature access and the
+   * subscription pricing computed for the tenant. May be empty for tenants
+   * created via the plain `POST /tenants` bootstrap endpoint, which predates
+   * module selection.
+   */
+  modules: HepModule[];
   adminSeedStatus: ProvisioningStepStatus | null;
   inviteStatus: ProvisioningStepStatus | null;
 }
@@ -603,7 +611,10 @@ export interface TenantSummary {
 export interface OnboardTenantRequest {
   name: string;
   slug: string;
-  plan: string;
+  /** Subscription tier the tenant is onboarding onto (drives the monthly platform base fee). */
+  plan: PlanTier;
+  /** The product modules the tenant is subscribing to (at least one). */
+  modules: HepModule[];
   adminEmail: string;
 }
 
@@ -619,4 +630,66 @@ export interface OnboardTenantResponse {
   tenant: TenantSummary;
   adminSeed: { status: ProvisioningStepStatus; message?: string };
   invite: { status: ProvisioningStepStatus; message?: string };
+}
+
+/**
+ * The five product modules a tenant can subscribe to (PRD Section 3). A
+ * tenant is granted access to the modules it selects at onboarding; the
+ * selection also drives its subscription pricing (PRD Section 6). These are
+ * the CONTRACT identifiers only -- the authoritative fee schedule and the
+ * quote calculation live server-side in `services/tenant`'s pricing module
+ * (there is no real fee data on the client), exposed via `GET /pricing/quote`.
+ */
+export type HepModule =
+  | 'clinic'
+  | 'pharmacy'
+  | 'doctor'
+  | 'insurance'
+  | 'patient_portal';
+
+/**
+ * Subscription tier (PRD Section 6.2, "Platform base"): sets the flat monthly
+ * platform fee, independent of which modules are selected.
+ */
+export type PlanTier = 'starter' | 'growth' | 'enterprise';
+
+/** Request for a pricing quote (`GET /pricing/quote`): the tenant's intended module selection + tier. */
+export interface PricingQuoteRequest {
+  modules: HepModule[];
+  planTier: PlanTier;
+}
+
+/** One selected module's contribution to a quote (PRD Section 6.1/6.2). */
+export interface PricingLineItem {
+  module: HepModule;
+  label: string;
+  /** One-time onboarding fee for this module (PRD Section 6.1, first-time fee). */
+  onboardingFee: number;
+  /** Human-readable billable unit for this module's usage charge, e.g. "e-prescription". */
+  usageUnit: string;
+  /** Per-unit usage rate range across volume tiers (PRD Section 6.2): high-volume `to` <= low-volume `from`. */
+  usageRateFrom: number;
+  usageRateTo: number;
+}
+
+/**
+ * A computed subscription quote (`GET /pricing/quote`, PRD Section 6). All
+ * monetary values are in whole USD. The multi-module discount (PRD 6.1)
+ * applies to the combined one-time onboarding fee only, never to the monthly
+ * platform fee or usage rates.
+ */
+export interface PricingQuote {
+  modules: HepModule[];
+  planTier: PlanTier;
+  lineItems: PricingLineItem[];
+  /** Sum of every selected module's onboarding fee, before discount. */
+  onboardingSubtotal: number;
+  /** Multi-module discount rate applied to the onboarding subtotal: 0, 0.05, 0.10, 0.15, or 0.25. */
+  discountRate: number;
+  /** `onboardingSubtotal * discountRate`. */
+  discountAmount: number;
+  /** One-time onboarding total the tenant actually pays: `onboardingSubtotal - discountAmount`. */
+  onboardingTotal: number;
+  /** Flat recurring monthly platform fee for the chosen tier (PRD 6.2). */
+  monthlyPlatformFee: number;
 }

@@ -43,6 +43,7 @@ describe("useTenants", () => {
         schemaName: "tenant_acme",
         adminSeedStatus: "succeeded",
         inviteStatus: "succeeded",
+        modules: [],
       },
     ];
     vi.spyOn(tenantsApi, "listTenants").mockResolvedValue(tenants);

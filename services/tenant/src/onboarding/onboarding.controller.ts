@@ -5,15 +5,22 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import type { OnboardTenantResponse, TenantSummary } from '@hep/shared-types';
+import type {
+  OnboardTenantResponse,
+  PricingQuote,
+  TenantSummary,
+} from '@hep/shared-types';
 import { TenantGuard } from '../tenant-context/tenant.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { Audited } from '../audit-logs/audited.decorator';
 import { TenantsService } from '../tenants/tenants.service';
 import { toTenantResponseDto } from '../tenants/dto/tenant-response.dto';
+import { PricingService } from '../pricing/pricing.service';
+import { PricingQuoteQueryDto } from '../pricing/dto/pricing-quote-query.dto';
 import { OnboardingService } from './onboarding.service';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 
@@ -42,7 +49,21 @@ export class OnboardingController {
   constructor(
     private readonly tenantsService: TenantsService,
     private readonly onboardingService: OnboardingService,
+    private readonly pricingService: PricingService,
   ) {}
+
+  /**
+   * Subscription pricing quote for a prospective module selection + tier
+   * (PRD Section 6). Backs the onboarding form's live pricing summary so the
+   * Super Admin sees the one-time onboarding total (with multi-module
+   * discount) and monthly platform fee before submitting. Reference-data
+   * only -- no tenant is created or read here -- but kept behind the same
+   * super_admin guard chain as the rest of the console.
+   */
+  @Get('pricing/quote')
+  quote(@Query() query: PricingQuoteQueryDto): PricingQuote {
+    return this.pricingService.quote(query.modules, query.planTier);
+  }
 
   /** BAC-12, AC3: every tenant, for the Super Admin console's tenant-list page (status + provisioning result). */
   @Get()

@@ -8,12 +8,12 @@ import { decodeAccessToken, getStoredAccessToken } from "../auth/session";
 /**
  * `services/tenant`'s base URL (BAC-12). MUST be overridden outside local
  * dev via `NEXT_PUBLIC_TENANT_SERVICE_URL` -- the fallback below matches
- * that service's own dev-only default port (`services/tenant/src/main.ts`,
- * `PORT ?? 3000`), mirroring every backend service's `.env.example`
+ * that service's assigned local port (`scripts/start-all-local.sh`; apps/web
+ * itself owns port 3000), mirroring every backend service's `.env.example`
  * "dev-only fallback baked in" convention.
  */
 const TENANT_SERVICE_URL =
-  process.env.NEXT_PUBLIC_TENANT_SERVICE_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_TENANT_SERVICE_URL ?? "http://localhost:3001";
 
 /**
  * Builds the headers `services/tenant`'s Super Admin routes require

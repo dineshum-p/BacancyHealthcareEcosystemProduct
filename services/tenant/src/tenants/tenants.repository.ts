@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, QueryResult } from 'pg';
-import type { ProvisioningStepStatus } from '@hep/shared-types';
+import type { HepModule, ProvisioningStepStatus } from '@hep/shared-types';
 import { PG_POOL } from '../database/database.tokens';
 import { Tenant } from './tenant.entity';
 import { TenantStatus } from './tenant-status.enum';
@@ -14,13 +14,14 @@ interface TenantRow {
   schema_name: string;
   name: string;
   plan: string;
+  modules: string[] | null;
   owner_email: string | null;
   admin_seed_status: string | null;
   invite_status: string | null;
 }
 
 const TENANT_COLUMNS =
-  'id, slug, status, schema_name, name, plan, owner_email, admin_seed_status, invite_status';
+  'id, slug, status, schema_name, name, plan, modules, owner_email, admin_seed_status, invite_status';
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
 
@@ -95,8 +96,8 @@ export class TenantsRepository {
     assertSafeSchemaName(tenant.schemaName);
     try {
       const result: QueryResult<TenantRow> = await this.pool.query(
-        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, owner_email, admin_seed_status, invite_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO public.tenants (id, slug, status, schema_name, name, plan, modules, owner_email, admin_seed_status, invite_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING ${TENANT_COLUMNS}`,
         [
           tenant.id,
@@ -105,6 +106,7 @@ export class TenantsRepository {
           tenant.schemaName,
           tenant.name,
           tenant.plan,
+          tenant.modules,
           tenant.ownerEmail,
           tenant.adminSeedStatus,
           tenant.inviteStatus,
@@ -171,6 +173,9 @@ export class TenantsRepository {
       slug: row.slug,
       name: row.name,
       plan: row.plan,
+      // Postgres `text[]` comes back as a JS array; older rows (or pg-mem's
+      // null default) surface as null -- normalize both to an empty grant.
+      modules: (row.modules ?? []) as HepModule[],
       status: row.status as TenantStatus,
       schemaName: row.schema_name,
       ownerEmail: row.owner_email,

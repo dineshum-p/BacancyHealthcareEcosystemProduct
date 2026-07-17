@@ -1,23 +1,19 @@
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 /**
- * Dev-only fallback allowed origins (BAC-14, added proactively -- mirrors
+ * Dev-only fallback allowed origin (BAC-14, added proactively -- mirrors
  * `services/tenant`'s (BAC-12) and `services/auth`'s (BAC-13) identical
  * `src/config/cors.config.ts`, both of which had to add this REACTIVELY
  * after a missing-CORS bug was found once a frontend ticket actually called
  * them cross-origin. BAC-17 ("Register and search patients from the clinic
  * UI") will call THIS service directly from the browser, so this is added
- * now instead of waiting for that bug report): `apps/web`'s dev server
- * defaults to port 3000, but a locally-run frontend commonly ends up on the
- * next free port (3001-3002) instead when other services are also running
- * locally. Real deployments MUST override via `CORS_ALLOWED_ORIGINS`
- * (comma-separated).
+ * now instead of waiting for that bug report): `apps/web`'s dev server is
+ * pinned to port 3000 (`apps/web/package.json`'s `dev` script), while every
+ * backend service claims a fixed port starting from 3001 (see
+ * `scripts/start-all-local.sh`) so it never collides with the frontend.
+ * Real deployments MUST override via `CORS_ALLOWED_ORIGINS` (comma-separated).
  */
-const DEV_DEFAULT_ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-];
+const DEV_DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000'];
 
 /** Methods the browser calls on this service: `POST /patients` (register) and `GET /patients` (search). */
 const ALLOWED_METHODS = ['GET', 'POST'];

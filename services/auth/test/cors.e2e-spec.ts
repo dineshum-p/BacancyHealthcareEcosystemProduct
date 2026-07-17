@@ -66,12 +66,12 @@ describe('CORS (e2e)', () => {
   it('answers a cross-origin preflight OPTIONS for POST /auth/login with Access-Control-Allow-Origin', async () => {
     const response = await request(app.getHttpServer())
       .options('/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .set('Origin', 'http://localhost:3000')
       .set('Access-Control-Request-Method', 'POST')
       .set('Access-Control-Request-Headers', 'content-type,x-tenant-id');
 
     expect(response.headers['access-control-allow-origin']).toBe(
-      'http://localhost:3002',
+      'http://localhost:3000',
     );
     expect(response.headers['access-control-allow-methods']).toContain('POST');
   });
@@ -79,12 +79,12 @@ describe('CORS (e2e)', () => {
   it('answers a cross-origin preflight OPTIONS for POST /auth/mfa/login-verify with Access-Control-Allow-Origin', async () => {
     const response = await request(app.getHttpServer())
       .options('/auth/mfa/login-verify')
-      .set('Origin', 'http://localhost:3002')
+      .set('Origin', 'http://localhost:3000')
       .set('Access-Control-Request-Method', 'POST')
       .set('Access-Control-Request-Headers', 'content-type,x-tenant-id');
 
     expect(response.headers['access-control-allow-origin']).toBe(
-      'http://localhost:3002',
+      'http://localhost:3000',
     );
     expect(response.headers['access-control-allow-methods']).toContain('POST');
   });

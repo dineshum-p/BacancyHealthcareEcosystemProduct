@@ -19,6 +19,7 @@ describe('OnboardingService', () => {
     slug: 'acme',
     plan: 'starter',
     adminEmail: 'admin@acme.example.com',
+    modules: ['clinic'],
   };
 
   const activeTenant: Tenant = {
@@ -31,6 +32,7 @@ describe('OnboardingService', () => {
     ownerEmail: 'admin@acme.example.com',
     adminSeedStatus: null,
     inviteStatus: null,
+    modules: [],
   };
 
   beforeEach(() => {
@@ -77,6 +79,7 @@ describe('OnboardingService', () => {
       name: 'Acme Inc',
       slug: 'acme',
       plan: 'starter',
+      modules: ['clinic'],
       ownerEmail: 'admin@acme.example.com',
     });
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
@@ -105,6 +108,7 @@ describe('OnboardingService', () => {
         schemaName: 'tenant_acme',
         adminSeedStatus: 'succeeded',
         inviteStatus: 'succeeded',
+        modules: [],
       },
       adminSeed: { status: 'succeeded', message: undefined },
       invite: { status: 'succeeded', message: undefined },
@@ -209,6 +213,7 @@ describe('OnboardingService', () => {
       schemaName: 'tenant_acme',
       adminSeedStatus: 'succeeded',
       inviteStatus: 'succeeded',
+      modules: [],
     });
   });
 });

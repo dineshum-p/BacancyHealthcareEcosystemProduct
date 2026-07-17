@@ -11,11 +11,7 @@ describe('getCorsConfig', () => {
     delete process.env.CORS_ALLOWED_ORIGINS;
 
     expect(getCorsConfig()).toEqual({
-      origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:3002',
-      ],
+      origin: ['http://localhost:3000'],
       methods: ['GET', 'POST'],
       allowedHeaders: ['Authorization', 'X-Tenant-Id', 'Content-Type'],
       credentials: true,

@@ -1,10 +1,15 @@
 import {
+  IsArray,
   IsEmail,
+  IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
 } from 'class-validator';
+import type { HepModule } from '@hep/shared-types';
+import { ALL_MODULES } from '../../pricing/module-catalog';
 
 /**
  * Slugs are used both as the public tenant identifier (BAC-4's `X-Tenant-Id`
@@ -45,4 +50,18 @@ export class CreateTenantDto {
   @IsEmail()
   @MaxLength(320)
   ownerEmail!: string;
+
+  /**
+   * Optional module grant (PRD Section 3/6). The plain bootstrap endpoint
+   * doesn't require modules (a tenant can be provisioned before its
+   * subscription is decided); the Super Admin onboarding flow always supplies
+   * them. Defaults to an empty grant when omitted.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsIn(ALL_MODULES, {
+    each: true,
+    message: `each module must be one of: ${ALL_MODULES.join(', ')}`,
+  })
+  modules?: HepModule[];
 }
