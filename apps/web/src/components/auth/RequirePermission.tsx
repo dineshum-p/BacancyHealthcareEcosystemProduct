@@ -9,6 +9,8 @@ import { ForbiddenView } from "./ForbiddenView";
 export interface RequirePermissionProps {
   permission: Permission;
   children: ReactNode;
+  /** Passed through to {@link ForbiddenView}'s `description` (BAC-17, AC4). */
+  deniedDescription?: string;
 }
 
 /**
@@ -27,6 +29,7 @@ export interface RequirePermissionProps {
 export function RequirePermission({
   permission,
   children,
+  deniedDescription,
 }: RequirePermissionProps) {
   const { user, isLoading } = useCurrentUser();
 
@@ -35,7 +38,7 @@ export function RequirePermission({
   }
 
   if (!user || !roleHasPermission(user.role, permission)) {
-    return <ForbiddenView />;
+    return <ForbiddenView description={deniedDescription} />;
   }
 
   return <>{children}</>;

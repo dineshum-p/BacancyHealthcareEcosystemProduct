@@ -43,6 +43,25 @@ describe("RequirePermission", () => {
     expect(screen.queryByText("protected content")).not.toBeInTheDocument();
   });
 
+  it("renders a custom denied description when one is given", async () => {
+    setStoredAccessToken(
+      fakeJwt({ userId: "u1", tenantId: "t1", role: "staff" }),
+    );
+
+    render(
+      <RequirePermission
+        permission="write_patient"
+        deniedDescription="You need patient-write access to register a patient."
+      >
+        <div>protected content</div>
+      </RequirePermission>,
+    );
+
+    expect(
+      await screen.findByText(/patient-write access to register a patient/i),
+    ).toBeInTheDocument();
+  });
+
   it("renders a 403 forbidden view when there is no signed-in user at all", async () => {
     render(
       <RequirePermission permission="write_patient">
