@@ -241,7 +241,7 @@ describe("LoginPage", () => {
         expect.any(Object),
       );
       expect(getStoredAccessToken()).toBe(tokens.accessToken);
-      expect(replace).toHaveBeenCalledWith("/");
+      expect(replace).toHaveBeenCalledWith("/patients");
     });
 
     it("shows an inline error for invalid credentials and stays on the page (AC3)", () => {

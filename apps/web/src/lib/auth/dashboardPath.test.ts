@@ -7,9 +7,9 @@ describe("resolveDashboardPath", () => {
   });
 
   it.each(["clinic_admin", "provider", "staff"] as const)(
-    "sends a %s to the placeholder home route (AC4)",
+    "sends a %s to the patient search page (BAC-17's landing feature; every role has read_patient)",
     (role) => {
-      expect(resolveDashboardPath(role)).toBe("/");
+      expect(resolveDashboardPath(role)).toBe("/patients");
     },
   );
 });

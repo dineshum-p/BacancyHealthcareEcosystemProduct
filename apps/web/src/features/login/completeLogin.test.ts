@@ -48,13 +48,13 @@ describe("completeLogin", () => {
     expect(completeLogin(tokens)).toBe("/admin/tenants");
   });
 
-  it("resolves the placeholder home path for every other role (AC4)", () => {
+  it("resolves the patient search page for every other role (AC4)", () => {
     const tokens: AuthTokens = {
       accessToken: fakeJwt({ userId: "u1", tenantId: "t1", role: "staff" }),
       refreshToken: "refresh-token",
       expiresIn: 900,
     };
 
-    expect(completeLogin(tokens)).toBe("/");
+    expect(completeLogin(tokens)).toBe("/patients");
   });
 });
