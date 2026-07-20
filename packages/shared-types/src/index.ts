@@ -24,7 +24,8 @@ export type Permission =
   | 'read_patient'
   | 'write_patient'
   | 'read_encounter'
-  | 'write_encounter';
+  | 'write_encounter'
+  | 'review_patient_self_registration';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -692,4 +693,92 @@ export interface PricingQuote {
   onboardingTotal: number;
   /** Flat recurring monthly platform fee for the chosen tier (PRD 6.2). */
   monthlyPlatformFee: number;
+}
+
+/**
+ * `services/patient` (BAC-36). Request body for the PUBLIC, unauthenticated
+ * `POST /public/tenants/:tenantSlug/patients` endpoint: a patient submitting
+ * their own registration online, without an in-person identity check. Same
+ * shape as `RegisterPatientRequest` (BAC-14's staff-driven counterpart) --
+ * self-registration collects the same core demographics, just through a
+ * different (unauthenticated, pending-review) intake path.
+ */
+export type SelfRegisterPatientRequest = RegisterPatientRequest;
+
+/**
+ * Lifecycle of a self-submitted registration (BAC-36): `pending` immediately
+ * after submission (not yet searchable/trusted); `approved` once staff
+ * confirm it as a genuinely new patient (a real `patients` row -- with an
+ * MRN -- is created at that point); `rejected` when staff determine it is
+ * not legitimate; `merged` when staff determine it duplicates an existing
+ * patient and link it to that patient's record instead of creating a new
+ * one.
+ */
+export type PatientSelfRegistrationStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'merged';
+
+/**
+ * Response body for `POST /public/tenants/:tenantSlug/patients` (BAC-36).
+ * Deliberately minimal -- it must NOT leak whether a probable-duplicate match
+ * was found (that is staff-only information, see
+ * `PatientSelfRegistrationSummary.matchedPatientId`) to the anonymous public
+ * caller.
+ */
+export interface SelfRegistrationReceipt {
+  id: string;
+  tenantId: string;
+  status: PatientSelfRegistrationStatus;
+  createdAt: string;
+}
+
+/**
+ * A pending (or reviewed) self-registration as seen by staff reviewing the
+ * queue (BAC-36): `GET /patients/self-registrations`. `matchedPatientId`/
+ * `matchReason` are populated by duplicate detection at submission time --
+ * "this looks like it might be an existing patient" -- and are non-null only
+ * when a probable match was found; they do NOT auto-create/link anything by
+ * themselves, they only inform the staff reviewer's approve/reject/merge
+ * decision. `resultingPatientId` is set once reviewed: the newly created
+ * `patients` row on approval, or the matched existing patient's id on merge;
+ * always `null` while `status` is `'pending'` or after `'rejected'`.
+ */
+export interface PatientSelfRegistrationSummary {
+  id: string;
+  tenantId: string;
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`). */
+  dateOfBirth: string;
+  gender: PatientGender | null;
+  phone: string | null;
+  email: string | null;
+  status: PatientSelfRegistrationStatus;
+  matchedPatientId: string | null;
+  /** Why `matchedPatientId` was flagged, e.g. `'name_dob'`, `'phone'`, `'email'`. */
+  matchReason: string | null;
+  resultingPatientId: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Request body for `POST /patients/self-registrations/:id/reject` (BAC-36). */
+export interface RejectSelfRegistrationRequest {
+  reason?: string;
+}
+
+/**
+ * Request body for `POST /patients/self-registrations/:id/merge` (BAC-36):
+ * staff confirming the self-registration IS the same person as an existing
+ * patient. `targetPatientId` defaults to the duplicate-detection candidate
+ * (`PatientSelfRegistrationSummary.matchedPatientId`) on the client, but
+ * staff may override it to point at a different existing patient than the
+ * one duplicate detection proposed.
+ */
+export interface MergeSelfRegistrationRequest {
+  targetPatientId: string;
 }
