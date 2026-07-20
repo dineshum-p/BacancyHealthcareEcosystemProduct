@@ -52,6 +52,7 @@ function isTableAlreadyExistsError(error: unknown): boolean {
 export class PatientSchemaProvisioner {
   private readonly provisionedPatientsSchemas = new Set<string>();
   private readonly provisionedAuditLogsSchemas = new Set<string>();
+  private readonly provisionedSelfRegistrationsSchemas = new Set<string>();
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
@@ -139,5 +140,58 @@ export class PatientSchemaProvisioner {
     }
 
     this.provisionedAuditLogsSchemas.add(schemaName);
+  }
+
+  /**
+   * Idempotently ensures `<schema>.patient_self_registrations` exists
+   * (BAC-36): one row per patient-submitted online registration, distinct
+   * from `<schema>.patients` -- a self-registration only ever becomes a real
+   * `patients` row (with an MRN) once staff approve it
+   * (`PatientSelfRegistrationsService.approve`); until then it lives ONLY
+   * here, which is what keeps it out of `GET /patients` search (BAC-36's AC)
+   * without that endpoint needing any status filtering of its own.
+   *
+   * `matched_patient_id`/`match_reason` record duplicate-detection's result
+   * at submission time (nullable: no candidate found); `resulting_patient_id`
+   * is set once reviewed (the newly created patient's id on approval, or the
+   * matched existing patient's id on merge). No foreign-key constraints
+   * against `<schema>.patients` -- consistent with this service's other
+   * tables (e.g. `patients.mrn`'s own uniqueness constraint is the only FK-
+   * like constraint anywhere in this schema) and friendlier to `pg-mem`.
+   */
+  async ensureSelfRegistrationsTable(schemaName: string): Promise<void> {
+    if (this.provisionedSelfRegistrationsSchemas.has(schemaName)) {
+      return;
+    }
+    const schema = quoteSchemaIdentifier(schemaName);
+
+    try {
+      await this.pool.query(`
+        CREATE TABLE ${schema}.patient_self_registrations (
+          id UUID PRIMARY KEY,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          date_of_birth DATE NOT NULL,
+          gender TEXT NULL,
+          phone TEXT NULL,
+          email TEXT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          matched_patient_id TEXT NULL,
+          match_reason TEXT NULL,
+          resulting_patient_id TEXT NULL,
+          review_note TEXT NULL,
+          reviewed_by TEXT NULL,
+          reviewed_at TIMESTAMPTZ NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+    } catch (error) {
+      if (!isTableAlreadyExistsError(error)) {
+        throw error;
+      }
+    }
+
+    this.provisionedSelfRegistrationsSchemas.add(schemaName);
   }
 }

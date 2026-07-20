@@ -69,6 +69,31 @@ describe('PatientSchemaProvisioner', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('BAC-36: creates the patient_self_registrations table', async () => {
+    await provisioner.ensureSelfRegistrationsTable('acme');
+
+    const table = await pool.query(
+      'SELECT * FROM acme.patient_self_registrations',
+    );
+    expect(table.rows.length).toBe(0);
+  });
+
+  it('BAC-36: ensureSelfRegistrationsTable is idempotent', async () => {
+    await provisioner.ensureSelfRegistrationsTable('acme');
+    await expect(
+      provisioner.ensureSelfRegistrationsTable('acme'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('BAC-36: ensureSelfRegistrationsTable is idempotent even without the in-process cache', async () => {
+    await provisioner.ensureSelfRegistrationsTable('acme');
+    const freshProvisioner = new PatientSchemaProvisioner(pool);
+
+    await expect(
+      freshProvisioner.ensureSelfRegistrationsTable('acme'),
+    ).resolves.toBeUndefined();
+  });
+
   it('provisions two tenant schemas independently (separate mrn counters)', async () => {
     await pool.query('CREATE SCHEMA globex');
 
