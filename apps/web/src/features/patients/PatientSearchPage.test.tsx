@@ -115,6 +115,37 @@ describe("PatientSearchPage", () => {
       expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
     });
 
+    it("omits the chart link for a role without read_encounter (BAC-20, RBAC)", () => {
+      mockUseSearchPatients({
+        data: {
+          items: [
+            {
+              id: "p1",
+              tenantId: "t1",
+              mrn: "MRN-0001",
+              firstName: "Jane",
+              lastName: "Doe",
+              dateOfBirth: "1990-05-12",
+              gender: null,
+              phone: null,
+              email: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          page: 1,
+          limit: 20,
+          total: 1,
+        },
+      });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.queryByRole("link", { name: /view chart/i }),
+      ).not.toBeInTheDocument();
+    });
+
     it("passes submitted search filters through to the query (AC2)", async () => {
       const user = userEvent.setup();
       mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
@@ -144,6 +175,38 @@ describe("PatientSearchPage", () => {
       expect(
         screen.getByRole("link", { name: /register patient/i }),
       ).toHaveAttribute("href", "/patients/register");
+    });
+
+    it("shows a chart link to each patient's encounters page (BAC-20, AC1)", () => {
+      mockUseSearchPatients({
+        data: {
+          items: [
+            {
+              id: "p1",
+              tenantId: "t1",
+              mrn: "MRN-0001",
+              firstName: "Jane",
+              lastName: "Doe",
+              dateOfBirth: "1990-05-12",
+              gender: null,
+              phone: null,
+              email: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          page: 1,
+          limit: 20,
+          total: 1,
+        },
+      });
+
+      render(<PatientSearchPage />);
+
+      expect(screen.getByRole("link", { name: /view chart/i })).toHaveAttribute(
+        "href",
+        "/patients/p1/encounters",
+      );
     });
   });
 });

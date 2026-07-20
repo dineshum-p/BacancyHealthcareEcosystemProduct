@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { PatientSummary } from "@hep/shared-types";
 import {
   Table,
@@ -10,10 +11,15 @@ import {
 
 export interface PatientResultsTableProps {
   patients: PatientSummary[];
+  /** BAC-20, RBAC: hidden entirely for a caller without `read_encounter` -- `EncounterPage`'s own `RequirePermission` is the real enforcement, this just avoids advertising an action that would 403. */
+  canViewEncounters?: boolean;
 }
 
 /** BAC-17, AC2: one row per patient search result. */
-export function PatientResultsTable({ patients }: PatientResultsTableProps) {
+export function PatientResultsTable({
+  patients,
+  canViewEncounters = false,
+}: PatientResultsTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -23,6 +29,7 @@ export function PatientResultsTable({ patients }: PatientResultsTableProps) {
           <TableHead>Date of birth</TableHead>
           <TableHead>Gender</TableHead>
           <TableHead>Contact</TableHead>
+          {canViewEncounters && <TableHead>Chart</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -46,6 +53,16 @@ export function PatientResultsTable({ patients }: PatientResultsTableProps) {
                 <span>{patient.email ?? "—"}</span>
               </div>
             </TableCell>
+            {canViewEncounters && (
+              <TableCell>
+                <Link
+                  href={`/patients/${patient.id}/encounters`}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  View chart
+                </Link>
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>
