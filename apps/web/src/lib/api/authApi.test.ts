@@ -1,6 +1,11 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
-import type { AuthTokens, LoginResult, MfaChallenge } from "@hep/shared-types";
-import { login, verifyMfaLogin } from "./authApi";
+import type {
+  AuthTokens,
+  LoginResult,
+  MfaChallenge,
+  RegisteredUser,
+} from "@hep/shared-types";
+import { login, registerPatient, verifyMfaLogin } from "./authApi";
 
 describe("authApi", () => {
   beforeEach(() => {
@@ -67,6 +72,62 @@ describe("authApi", () => {
       await expect(
         login("acme", { email: "nobody@acme.example.com", password: "wrong" }),
       ).rejects.toThrow("Invalid email or password.");
+    });
+  });
+
+  describe("registerPatient", () => {
+    it("POSTs /auth/patients/register with the tenant header and sign-up fields (BAC-43)", async () => {
+      const created: RegisteredUser = {
+        id: "u1",
+        email: "new.patient@acme.example.com",
+        role: "patient",
+        createdAt: "2026-07-21T00:00:00.000Z",
+      };
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify(created), { status: 201 }),
+      );
+
+      const result = await registerPatient("acme", {
+        email: "new.patient@acme.example.com",
+        password: "s3cret!!",
+        firstName: "New",
+        lastName: "Patient",
+        dateOfBirth: "1990-01-01",
+      });
+
+      expect(result).toEqual(created);
+      const [url, init] = vi.mocked(fetch).mock.calls[0];
+      expect(String(url)).toMatch(/\/auth\/patients\/register$/);
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(init?.body as string)).toEqual({
+        email: "new.patient@acme.example.com",
+        password: "s3cret!!",
+        firstName: "New",
+        lastName: "Patient",
+        dateOfBirth: "1990-01-01",
+      });
+      const headers = new Headers(init?.headers);
+      expect(headers.get("X-Tenant-Id")).toBe("acme");
+      expect(headers.get("Content-Type")).toBe("application/json");
+    });
+
+    it("throws a descriptive error for a duplicate email (409)", async () => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({ message: "An account with this email already exists." }),
+          { status: 409 },
+        ),
+      );
+
+      await expect(
+        registerPatient("acme", {
+          email: "new.patient@acme.example.com",
+          password: "s3cret!!",
+          firstName: "New",
+          lastName: "Patient",
+          dateOfBirth: "1990-01-01",
+        }),
+      ).rejects.toThrow("An account with this email already exists.");
     });
   });
 
