@@ -782,3 +782,86 @@ export interface RejectSelfRegistrationRequest {
 export interface MergeSelfRegistrationRequest {
   targetPatientId: string;
 }
+
+/**
+ * `services/scheduling` (BAC-16). Lifecycle of a single-provider appointment
+ * slot: `booked` on creation, `cancelled` once cancelled. There is no
+ * separate `rescheduled` value -- a reschedule keeps `status: 'booked'` and
+ * simply updates `startTime`/`endTime` (the status TRANSITION -- old
+ * time range -> new time range, or `booked` -> `cancelled` -- is what gets
+ * recorded in the audit log, per `PATCH /appointments/:id`'s AC). Deliberately
+ * only these two values: this ticket explicitly excludes recurring
+ * appointments and cross-provider conflict/resource allocation, so there is
+ * no `no-show`/`completed`/etc. lifecycle to model yet.
+ */
+export type AppointmentStatus = 'booked' | 'cancelled';
+
+/**
+ * Request body for `POST /appointments` (BAC-16, AC1): books a single slot
+ * for one patient with one provider. `notifyChannel`/`notifyTo` carry the
+ * patient's confirmation-delivery destination (an email address or phone
+ * number) -- `services/scheduling` does not itself store patient contact
+ * details (that's `services/patient`'s (BAC-14) data), so the caller (which
+ * already has the patient record on screen, e.g. from a prior
+ * `GET /patients` search) supplies where the booking confirmation
+ * (`services/notification`, BAC-9) should be sent.
+ */
+export interface CreateAppointmentRequest {
+  /** The user id (JWT `sub`/`userId`) of the provider this slot is booked with. */
+  providerId: string;
+  /** `services/patient`'s (BAC-14) patient id. */
+  patientId: string;
+  /** ISO-8601 date-time; start of the slot. */
+  startTime: string;
+  /** ISO-8601 date-time; end of the slot. Must be after `startTime`. */
+  endTime: string;
+  notifyChannel: NotificationChannel;
+  /** Email address or phone number, matching `notifyChannel`. */
+  notifyTo: string;
+}
+
+/**
+ * An appointment as returned by every `services/scheduling` endpoint
+ * (BAC-16): `POST /appointments`, `GET /appointments`,
+ * `PATCH /appointments/:id`.
+ */
+export interface AppointmentSummary {
+  id: string;
+  tenantId: string;
+  providerId: string;
+  patientId: string;
+  /** ISO-8601 date-time. */
+  startTime: string;
+  /** ISO-8601 date-time. */
+  endTime: string;
+  status: AppointmentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /appointments` query params (BAC-16, AC2): a single calendar day's schedule. */
+export interface AppointmentQuery {
+  /** ISO-8601 date (`YYYY-MM-DD`), no time component -- the calendar day (UTC) to list. */
+  date: string;
+  /**
+   * Required for `clinic_admin`/`staff` (who may query any provider's day);
+   * ignored (always resolves to the caller's own user id) for `provider`,
+   * who may only view their own calendar. See `services/scheduling`'s
+   * `provider-scope.util.ts`.
+   */
+  providerId?: string;
+}
+
+/**
+ * Request body for `PATCH /appointments/:id` (BAC-16, AC3): either
+ * reschedules a booked appointment to a new time range, or cancels it.
+ * `startTime`/`endTime` are required when (and only meaningful when)
+ * `action` is `'reschedule'`.
+ */
+export interface UpdateAppointmentRequest {
+  action: 'reschedule' | 'cancel';
+  /** ISO-8601 date-time; required when `action` is `'reschedule'`. */
+  startTime?: string;
+  /** ISO-8601 date-time; required when `action` is `'reschedule'`. */
+  endTime?: string;
+}

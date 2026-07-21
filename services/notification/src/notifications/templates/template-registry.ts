@@ -36,6 +36,17 @@ const TEMPLATE_REGISTRY: Readonly<Record<string, NotificationTemplate>> = {
     subject: "You've been invited to administer {{tenantName}} on HEP",
     body: 'Hi, an administrator account has been created for you ({{email}}) for {{tenantName}}. Contact your Super Admin for next steps to access it.',
   },
+  /**
+   * BAC-16: sent by `services/scheduling`'s `AppointmentsService.create` via
+   * `POST /notifications/internal` immediately after a slot is successfully
+   * booked (`services/scheduling` calls this service the same way
+   * `services/tenant`'s onboarding orchestration does for BAC-12's
+   * admin-invite -- see that service's `HttpNotificationServiceClient`).
+   */
+  'scheduling.appointment.confirmation': {
+    subject: 'Your appointment is confirmed',
+    body: 'Your appointment (reference {{appointmentId}}) is confirmed for {{startTime}} to {{endTime}}.',
+  },
 };
 
 /** Resolves a template by id, or throws `UnknownTemplateError`. */

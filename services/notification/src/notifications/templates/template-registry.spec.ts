@@ -18,6 +18,12 @@ describe('template-registry', () => {
     expect(template.body).toEqual(expect.stringContaining('{{email}}'));
   });
 
+  it('resolves the seeded "scheduling.appointment.confirmation" template (BAC-16)', () => {
+    const template = getTemplate('scheduling.appointment.confirmation');
+    expect(template.subject).toEqual(expect.stringContaining('confirmed'));
+    expect(template.body).toEqual(expect.stringContaining('{{appointmentId}}'));
+  });
+
   it('throws UnknownTemplateError for an unregistered templateId', () => {
     expect(() => getTemplate('does.not.exist')).toThrow(UnknownTemplateError);
   });
