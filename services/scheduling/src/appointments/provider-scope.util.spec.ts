@@ -33,6 +33,12 @@ describe('assertProviderScope', () => {
       assertProviderScope(user('provider', 'provider-1'), 'provider-2'),
     ).toThrow(ForbiddenException);
   });
+
+  it("BAC-41: forbids a patient from acting on ANY provider's calendar (default-deny)", () => {
+    expect(() =>
+      assertProviderScope(user('patient', 'patient-1'), 'provider-1'),
+    ).toThrow(ForbiddenException);
+  });
 });
 
 describe('resolveScopedProviderId', () => {
@@ -70,5 +76,21 @@ describe('resolveScopedProviderId', () => {
     expect(() =>
       resolveScopedProviderId(user('provider', 'provider-1'), 'provider-2'),
     ).toThrow(ForbiddenException);
+  });
+
+  it('BAC-41: falls back to treating a patient like a non-cross-provider role (defaults to their own userId)', () => {
+    // `resolveScopedProviderId` only encodes BAC-16's provider-scoping rule
+    // (cross-provider staff roles vs. a `provider` acting on their own
+    // calendar); it is not itself a patient-ownership check -- `patient`
+    // simply falls into the same "not a cross-provider role" branch a
+    // `provider` does, so it defaults to the caller's own `userId` rather
+    // than 400ing. `role-permissions.map.ts` grants `patient` neither
+    // `MANAGE_APPOINTMENTS` nor `READ_APPOINTMENTS` (BAC-41 default-deny),
+    // so this code path is unreachable for a `patient` caller today; a
+    // later ticket consuming `patient-scope.util.ts` is responsible for a
+    // real self-scoping rule once that changes.
+    expect(
+      resolveScopedProviderId(user('patient', 'patient-1'), undefined),
+    ).toBe('patient-1');
   });
 });
