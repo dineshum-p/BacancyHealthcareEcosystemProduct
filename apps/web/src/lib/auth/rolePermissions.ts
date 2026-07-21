@@ -38,11 +38,19 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * no write) since the ticket doesn't call it out explicitly; this is a
  * judgment call, not dictated by an explicit acceptance criterion.
  *
- * `patient` (BAC-41) is a type-completeness addition only: every backend
- * service's own `ROLE_PERMISSIONS` map grants `patient` NONE of these
- * permissions yet (default-deny -- see BAC-41's report), so there is no real
- * UI gating decision to make here until a later, patient-portal-facing
- * ticket adds one.
+ * `patient` (BAC-41) was a type-completeness addition only through BAC-44: no
+ * backend service granted `patient` any of these permissions (default-deny),
+ * so there was no real UI gating decision to make. BAC-46 is that
+ * later, patient-portal-facing ticket: `services/emr`'s
+ * `role-permissions.map.ts` grants `patient` BOTH `READ_PATIENT_PROFILE` and
+ * `WRITE_PATIENT_PROFILE` (self-scoped, enforced server-side via
+ * `assertPatientScope`), so `'read_patient_profile'` gates `/profile`
+ * (`PatientProfilePage`) here the same way. Deliberately NOT added to any
+ * staff-side role's list here: this page is scoped to "MY profile" for the
+ * logged-in patient only (BAC-46) -- a staff-facing per-patient profile view
+ * is out of scope and would be a separate, later UI gating decision even
+ * though the backend already grants staff roles the same server-side
+ * permission for a future such page.
  */
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   super_admin: [
@@ -75,7 +83,7 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "read_appointments",
     "manage_appointments",
   ],
-  patient: [],
+  patient: ["read_patient_profile", "write_patient_profile"],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

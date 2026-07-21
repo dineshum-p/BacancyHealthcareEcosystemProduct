@@ -61,3 +61,12 @@ describe("roleHasPermission (BAC-20)", () => {
     expect(roleHasPermission("staff", "write_encounter")).toBe(false);
   });
 });
+
+describe("roleHasPermission (BAC-46)", () => {
+  it("grants read_patient_profile and write_patient_profile to patient only -- the 'My Profile' page is self-scoped", () => {
+    expect(roleHasPermission("patient", "read_patient_profile")).toBe(true);
+    expect(roleHasPermission("patient", "write_patient_profile")).toBe(true);
+    expect(roleHasPermission("staff", "read_patient_profile")).toBe(false);
+    expect(roleHasPermission("provider", "read_patient_profile")).toBe(false);
+  });
+});
