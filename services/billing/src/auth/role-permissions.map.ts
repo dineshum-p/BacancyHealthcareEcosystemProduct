@@ -23,6 +23,15 @@ export const ROLE_PERMISSIONS: Readonly<
   [UserRole.CLINIC_ADMIN]: [Permission.RECORD_USAGE, Permission.READ_USAGE],
   [UserRole.PROVIDER]: [Permission.RECORD_USAGE],
   [UserRole.STAFF]: [Permission.RECORD_USAGE],
+  /**
+   * `PATIENT` (BAC-41) is deliberately granted NEITHER permission above --
+   * default-deny, not silent inheritance of a staff-side permission set.
+   * Unlike `services/scheduling`/`services/emr`/`services/patient`, this
+   * service has no patient-owned resource a `patient` caller would ever
+   * need to reach directly (usage metering is an internal, staff/admin-only
+   * concern), so no `patient-scope.util.ts`-style utility is added here.
+   */
+  [UserRole.PATIENT]: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
