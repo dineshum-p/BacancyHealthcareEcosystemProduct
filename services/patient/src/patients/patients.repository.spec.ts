@@ -181,4 +181,102 @@ describe('PatientsRepository', () => {
       expect(items.some((i) => i.firstName === 'Other')).toBe(false);
     });
   });
+
+  describe('findById', () => {
+    it('returns the patient matching the given id', async () => {
+      const inserted = await repository.insert('acme', {
+        firstName: 'Jane',
+        lastName: 'Doe',
+        dateOfBirth: '1990-05-12',
+      });
+
+      const found = await repository.findById('acme', inserted.id);
+
+      expect(found?.id).toBe(inserted.id);
+      expect(found?.mrn).toBe(inserted.mrn);
+    });
+
+    it('returns null when no patient matches the given id', async () => {
+      const found = await repository.findById(
+        'acme',
+        '00000000-0000-0000-0000-000000000000',
+      );
+      expect(found).toBeNull();
+    });
+  });
+
+  describe('BAC-36: findPotentialDuplicate', () => {
+    beforeEach(async () => {
+      await repository.insert('acme', {
+        firstName: 'Jane',
+        lastName: 'Doe',
+        dateOfBirth: '1990-05-12',
+        phone: '555-0100',
+        email: 'jane.doe@example.com',
+      });
+    });
+
+    it('matches on case-insensitive exact name + exact date of birth ("name_dob")', async () => {
+      const match = await repository.findPotentialDuplicate('acme', {
+        firstName: 'JANE',
+        lastName: 'doe',
+        dateOfBirth: '1990-05-12',
+      });
+
+      expect(match?.matchReason).toBe('name_dob');
+      expect(match?.patient.email).toBe('jane.doe@example.com');
+    });
+
+    it('matches on an exact phone number when the name/DOB do not match', async () => {
+      const match = await repository.findPotentialDuplicate('acme', {
+        firstName: 'Janet',
+        lastName: 'Doerson',
+        dateOfBirth: '1991-01-01',
+        phone: '555-0100',
+      });
+
+      expect(match?.matchReason).toBe('phone');
+    });
+
+    it('matches on an exact (case-insensitive) email when name/DOB/phone do not match', async () => {
+      const match = await repository.findPotentialDuplicate('acme', {
+        firstName: 'Janet',
+        lastName: 'Doerson',
+        dateOfBirth: '1991-01-01',
+        email: 'JANE.DOE@example.com',
+      });
+
+      expect(match?.matchReason).toBe('email');
+    });
+
+    it('returns null when nothing matches', async () => {
+      const match = await repository.findPotentialDuplicate('acme', {
+        firstName: 'Nobody',
+        lastName: 'Here',
+        dateOfBirth: '2000-01-01',
+        phone: '555-9999',
+        email: 'nobody@example.com',
+      });
+
+      expect(match).toBeNull();
+    });
+
+    it('never matches a patient registered under a different tenant schema', async () => {
+      await pool.query('CREATE SCHEMA globex');
+      await provisioner.ensurePatientsTable('globex');
+      await repository.insert('globex', {
+        firstName: 'Jane',
+        lastName: 'Doe',
+        dateOfBirth: '1990-05-12',
+      });
+
+      const match = await repository.findPotentialDuplicate('globex', {
+        firstName: 'Someone',
+        lastName: 'Else',
+        dateOfBirth: '1970-01-01',
+      });
+
+      expect(match).toBeNull();
+    });
+  });
 });

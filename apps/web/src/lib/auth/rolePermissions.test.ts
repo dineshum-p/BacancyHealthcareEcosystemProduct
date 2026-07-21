@@ -15,4 +15,19 @@ describe("roleHasPermission (BAC-17, AC4)", () => {
     expect(roleHasPermission("provider", "write_patient")).toBe(true);
     expect(roleHasPermission("staff", "write_patient")).toBe(false);
   });
+
+  it("grants review_patient_self_registration to super_admin, clinic_admin, and staff only (BAC-37)", () => {
+    expect(
+      roleHasPermission("super_admin", "review_patient_self_registration"),
+    ).toBe(true);
+    expect(
+      roleHasPermission("clinic_admin", "review_patient_self_registration"),
+    ).toBe(true);
+    expect(
+      roleHasPermission("staff", "review_patient_self_registration"),
+    ).toBe(true);
+    expect(
+      roleHasPermission("provider", "review_patient_self_registration"),
+    ).toBe(false);
+  });
 });
