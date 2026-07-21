@@ -6,6 +6,7 @@ import { User } from './user.entity';
 import { UserRole } from './user-role.enum';
 import { MfaStatus } from './mfa-status.enum';
 import { EmailAlreadyExistsError } from './errors/email-already-exists.error';
+import { toIsoDate } from './date.util';
 
 interface UserRow {
   id: string;
@@ -16,16 +17,24 @@ interface UserRow {
   mfa_status: string;
   mfa_secret_encrypted: string | null;
   mfa_last_used_step: string | number | null;
+  first_name: string | null;
+  last_name: string | null;
+  date_of_birth: Date | string | null;
 }
 
 const USER_COLUMNS =
-  'id, email, password_hash, role, created_at, mfa_status, mfa_secret_encrypted, mfa_last_used_step';
+  'id, email, password_hash, role, created_at, mfa_status, mfa_secret_encrypted, mfa_last_used_step, first_name, last_name, date_of_birth';
 
 interface NewUser {
   id: string;
   email: string;
   passwordHash: string;
   role: UserRole;
+  /** BAC-42: only ever set for `role: UserRole.PATIENT` (see `User`'s doc comment). */
+  firstName?: string;
+  lastName?: string;
+  /** ISO-8601 date (`YYYY-MM-DD`). */
+  dateOfBirth?: string;
 }
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
@@ -104,10 +113,18 @@ export class UsersRepository {
     );
     try {
       const result: QueryResult<UserRow> = await client.query(
-        `INSERT INTO ${schema}.users (id, email, password_hash, role)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO ${schema}.users (id, email, password_hash, role, first_name, last_name, date_of_birth)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING ${USER_COLUMNS}`,
-        [user.id, user.email, user.passwordHash, user.role],
+        [
+          user.id,
+          user.email,
+          user.passwordHash,
+          user.role,
+          user.firstName ?? null,
+          user.lastName ?? null,
+          user.dateOfBirth ?? null,
+        ],
       );
       return this.toEntity(result.rows[0]);
     } catch (error) {
@@ -224,6 +241,10 @@ export class UsersRepository {
       mfaSecretEncrypted: row.mfa_secret_encrypted,
       mfaLastUsedStep:
         row.mfa_last_used_step === null ? null : Number(row.mfa_last_used_step),
+      firstName: row.first_name,
+      lastName: row.last_name,
+      dateOfBirth:
+        row.date_of_birth === null ? null : toIsoDate(row.date_of_birth),
     };
   }
 }

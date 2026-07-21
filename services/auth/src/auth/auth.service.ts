@@ -44,6 +44,7 @@ import {
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-code.util';
 import { getAuthConfig } from '../config/auth.config';
 import { RegisterDto } from './dto/register.dto';
+import { PatientSignUpDto } from './dto/patient-sign-up.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
@@ -151,6 +152,56 @@ export class AuthService {
         email,
         passwordHash,
         role,
+      });
+      return this.toRegisteredUser(user);
+    } catch (error) {
+      if (error instanceof EmailAlreadyExistsError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * BAC-42: the PUBLIC, unauthenticated patient sign-up entry point
+   * (`POST /auth/patients/register`) -- a genuinely new, distinct
+   * registration path from `register()`, NOT a reuse of it, for two reasons:
+   *
+   *   1. Role: always `UserRole.PATIENT`, unconditionally. There is
+   *      deliberately no bootstrap-admin (`ownerEmail`) promotion here --
+   *      unlike `register()`, a patient sign-up can never become a
+   *      `super_admin` no matter what email is used, so this does not reuse
+   *      `register()`'s owner-email check at all.
+   *   2. Identity fields: collects `firstName`/`lastName`/`dateOfBirth` in
+   *      addition to credentials -- `register()`'s `RegisterDto` has no such
+   *      fields (staff/admin registration collects no demographics).
+   *
+   * Matches `register()`'s existing (not `login()`'s) behaviour on success:
+   * returns the created `RegisteredUser` and issues NO tokens -- the caller
+   * must still call `POST /auth/login` afterwards, exactly like every other
+   * registration path in this service. Duplicate-email handling is the same
+   * translation `register()`/`seedClinicAdmin()` already do (409, via
+   * `EmailAlreadyExistsError`).
+   *
+   * This creates ONLY an auth-service user (`role: 'patient'`) -- it does
+   * NOT create a clinical/EMR patient record (`services/patient`'s own
+   * domain); reconciling an authenticated patient identity with a clinical
+   * record, if ever needed, is explicitly out of this ticket's scope.
+   */
+  async registerPatient(dto: PatientSignUpDto): Promise<RegisteredUser> {
+    await this.ensureSchema();
+    const email = normalizeEmail(dto.email);
+    const passwordHash = await hashPassword(dto.password);
+
+    try {
+      const user = await this.usersRepository.create({
+        id: randomUUID(),
+        email,
+        passwordHash,
+        role: UserRole.PATIENT,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        dateOfBirth: dto.dateOfBirth,
       });
       return this.toRegisteredUser(user);
     } catch (error) {

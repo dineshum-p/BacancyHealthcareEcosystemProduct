@@ -23,6 +23,7 @@ import { encryptTotpSecret } from './totp-secret-cipher.util';
 import { currentTotpStep, generateTotpSecret } from './totp.util';
 import { verifyRecoveryCode } from './recovery-code.util';
 import { RegisterDto } from './dto/register.dto';
+import { PatientSignUpDto } from './dto/patient-sign-up.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
@@ -38,6 +39,9 @@ function makeUser(overrides: Partial<User> = {}): User {
     mfaStatus: MfaStatus.NONE,
     mfaSecretEncrypted: null,
     mfaLastUsedStep: null,
+    firstName: null,
+    lastName: null,
+    dateOfBirth: null,
     ...overrides,
   };
 }
@@ -266,6 +270,141 @@ describe('AuthService', () => {
         // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
         expect(tenantContext.getTenant).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('registerPatient (BAC-42)', () => {
+    const dto: PatientSignUpDto = {
+      email: 'Patient@Example.com',
+      password: 'super-secret-1',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dateOfBirth: '1990-05-12',
+    };
+
+    it('provisions the tenant schema before creating the user', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(
+          makeUser({
+            ...user,
+            createdAt: new Date(),
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+            dateOfBirth: user.dateOfBirth ?? null,
+          }),
+        ),
+      );
+
+      await service.registerPatient(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(authSchemaProvisioner.ensureProvisioned).toHaveBeenCalledWith(
+        'tenant_acme',
+      );
+    });
+
+    it('normalizes the email, always assigns the PATIENT role (never STAFF/owner promotion), and persists the identity fields', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(
+          makeUser({
+            ...user,
+            createdAt: new Date(),
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+            dateOfBirth: user.dateOfBirth ?? null,
+          }),
+        ),
+      );
+
+      const result = await service.registerPatient(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'patient@example.com',
+          role: UserRole.PATIENT,
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          dateOfBirth: '1990-05-12',
+        }),
+      );
+      expect(result).toMatchObject({
+        email: 'patient@example.com',
+        role: UserRole.PATIENT,
+      });
+    });
+
+    it('is NOT subject to bootstrap-admin (ownerEmail) promotion, unlike register()', async () => {
+      tenantContext.getTenant.mockReturnValue({
+        ...tenant,
+        ownerEmail: 'patient@example.com',
+      });
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(
+          makeUser({
+            ...user,
+            createdAt: new Date(),
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+            dateOfBirth: user.dateOfBirth ?? null,
+          }),
+        ),
+      );
+
+      const result = await service.registerPatient(dto);
+
+      expect(result.role).toBe(UserRole.PATIENT);
+    });
+
+    it('stores an argon2 hash, not the plaintext password', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(
+          makeUser({
+            ...user,
+            createdAt: new Date(),
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+            dateOfBirth: user.dateOfBirth ?? null,
+          }),
+        ),
+      );
+
+      await service.registerPatient(dto);
+
+      const [createArg] = usersRepository.create.mock.calls[0];
+      expect(createArg.passwordHash).not.toBe(dto.password);
+      expect(createArg.passwordHash.startsWith('$argon2')).toBe(true);
+    });
+
+    it("never returns the password hash, and does not issue any tokens (matches register()'s no-auto-login behaviour)", async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(
+          makeUser({
+            ...user,
+            createdAt: new Date(),
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+            dateOfBirth: user.dateOfBirth ?? null,
+          }),
+        ),
+      );
+
+      const result = await service.registerPatient(dto);
+
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(result).not.toHaveProperty('accessToken');
+      expect(result).not.toHaveProperty('refreshToken');
+      expect(JSON.stringify(result)).not.toContain(dto.password);
+    });
+
+    it('translates a duplicate email into ConflictException (409), same as register()', async () => {
+      usersRepository.create.mockRejectedValue(
+        new EmailAlreadyExistsError('patient@example.com'),
+      );
+
+      await expect(service.registerPatient(dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
   });
 

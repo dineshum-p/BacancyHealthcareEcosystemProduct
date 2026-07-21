@@ -55,6 +55,9 @@ export class AuthSchemaProvisioner {
         mfa_status TEXT NOT NULL DEFAULT 'none',
         mfa_secret_encrypted TEXT NULL,
         mfa_last_used_step BIGINT NULL,
+        first_name TEXT NULL,
+        last_name TEXT NULL,
+        date_of_birth DATE NULL,
         UNIQUE (email)
       )`,
     );
@@ -72,6 +75,17 @@ export class AuthSchemaProvisioner {
     );
     await this.pool.query(
       `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS mfa_last_used_step BIGINT NULL`,
+    );
+    // Same defensive-migration pattern (BAC-42): backfills the patient
+    // sign-up identity columns for a schema provisioned before they existed.
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS first_name TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS last_name TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS date_of_birth DATE NULL`,
     );
 
     await this.createTableIfMissing(

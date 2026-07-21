@@ -17,6 +17,7 @@ describe('AuthController', () => {
   beforeEach(() => {
     service = {
       register: jest.fn(),
+      registerPatient: jest.fn(),
       login: jest.fn(),
       refresh: jest.fn(),
       enrollMfa: jest.fn(),
@@ -42,6 +43,27 @@ describe('AuthController', () => {
     await expect(controller.register(dto)).resolves.toBe(created);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
     expect(service.register).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates POST /auth/patients/register to the service (BAC-42)', async () => {
+    const dto = {
+      email: 'ada@example.com',
+      password: 'super-secret-1',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dateOfBirth: '1990-05-12',
+    };
+    const created: RegisteredUser = {
+      id: 'user-4',
+      email: 'ada@example.com',
+      role: UserRole.PATIENT,
+      createdAt: new Date().toISOString(),
+    };
+    service.registerPatient.mockResolvedValue(created);
+
+    await expect(controller.registerPatient(dto)).resolves.toBe(created);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.registerPatient).toHaveBeenCalledWith(dto);
   });
 
   it('delegates login to the service', async () => {

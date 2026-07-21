@@ -51,6 +51,9 @@ describe('UsersRepository', () => {
         mfa_status TEXT NOT NULL DEFAULT 'none',
         mfa_secret_encrypted TEXT NULL,
         mfa_last_used_step BIGINT NULL,
+        first_name TEXT NULL,
+        last_name TEXT NULL,
+        date_of_birth DATE NULL,
         UNIQUE (email)
       )
     `);
@@ -186,6 +189,53 @@ describe('UsersRepository', () => {
       await expect(
         repository.updateRole(randomUUID(), UserRole.PROVIDER),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('patient identity fields (BAC-42)', () => {
+    it('persists firstName/lastName/dateOfBirth when creating a patient user', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'patient@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.PATIENT,
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dateOfBirth: '1990-05-12',
+      });
+
+      expect(created).toMatchObject({
+        role: UserRole.PATIENT,
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dateOfBirth: '1990-05-12',
+      });
+
+      const found = await repository.findByEmail('patient@example.com');
+      expect(found).toEqual(created);
+    });
+
+    it('defaults firstName/lastName/dateOfBirth to null for a non-patient registration', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'staffer@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.STAFF,
+      });
+
+      expect(created).toMatchObject({
+        firstName: null,
+        lastName: null,
+        dateOfBirth: null,
+      });
     });
   });
 
