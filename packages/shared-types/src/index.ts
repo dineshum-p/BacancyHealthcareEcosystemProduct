@@ -16,7 +16,12 @@ export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
  * caller's `role` claim. `'read_patient'`/`'write_patient'` were added by
  * BAC-10 -- see `services/emr`'s `permission.enum.ts` for what each grants
  * access to. `'read_encounter'`/`'write_encounter'` were added by BAC-15 for
- * that same service's SOAP encounter-note endpoints.
+ * that same service's SOAP encounter-note endpoints. `'read_appointments'`/
+ * `'manage_appointments'` were added by BAC-16/BAC-21 -- see
+ * `services/scheduling`'s own `permission.enum.ts` (a separately-deployed
+ * service, so it necessarily duplicates the string values rather than
+ * importing this union) for what each grants access to; `apps/web`'s BAC-21
+ * appointments UI (`rolePermissions.ts`) is the only frontend consumer.
  */
 export type Permission =
   | 'manage_user_roles'
@@ -25,7 +30,9 @@ export type Permission =
   | 'write_patient'
   | 'read_encounter'
   | 'write_encounter'
-  | 'review_patient_self_registration';
+  | 'review_patient_self_registration'
+  | 'read_appointments'
+  | 'manage_appointments';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {

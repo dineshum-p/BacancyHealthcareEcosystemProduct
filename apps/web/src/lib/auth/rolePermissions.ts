@@ -12,20 +12,43 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * exactly, see that file's doc comment for the full rationale). Exactly like
  * `RequireRole`, this is a UX convenience only: the real enforcement is
  * `services/patient`'s own `PermissionsGuard`, which independently 403s.
+ *
+ * `'read_appointments'`/`'manage_appointments'` mirror `services/scheduling`'s
+ * OWN `ROLE_PERMISSIONS` map (BAC-16/BAC-21) exactly the same way: every role
+ * gets BOTH (the role-level split this map can express is "can this caller
+ * use the schedule at all", not "whose calendar" -- that finer,
+ * instance-level rule is a UI-only decision in `SchedulePage` based on
+ * `user.role === 'provider'`, mirroring that service's
+ * `provider-scope.util.ts`, and is independently re-enforced server-side
+ * regardless of what this map says).
  */
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   super_admin: [
     "read_patient",
     "write_patient",
     "review_patient_self_registration",
+    "read_appointments",
+    "manage_appointments",
   ],
   clinic_admin: [
     "read_patient",
     "write_patient",
     "review_patient_self_registration",
+    "read_appointments",
+    "manage_appointments",
   ],
-  provider: ["read_patient", "write_patient"],
-  staff: ["read_patient", "review_patient_self_registration"],
+  provider: [
+    "read_patient",
+    "write_patient",
+    "read_appointments",
+    "manage_appointments",
+  ],
+  staff: [
+    "read_patient",
+    "review_patient_self_registration",
+    "read_appointments",
+    "manage_appointments",
+  ],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
