@@ -57,6 +57,16 @@ describe("PatientSearchPage", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("shows the pending self-registrations link for staff (BAC-37, has review_patient_self_registration)", () => {
+      mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.getByRole("link", { name: /pending self-registrations/i }),
+      ).toHaveAttribute("href", "/patients/self-registrations");
+    });
+
     it("shows a loading state while searching (AC2)", () => {
       mockUseSearchPatients({ isLoading: true });
 
@@ -144,6 +154,16 @@ describe("PatientSearchPage", () => {
       expect(
         screen.getByRole("link", { name: /register patient/i }),
       ).toHaveAttribute("href", "/patients/register");
+    });
+
+    it("hides the pending self-registrations link (BAC-37: provider has no access to that queue)", () => {
+      mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.queryByRole("link", { name: /pending self-registrations/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });
