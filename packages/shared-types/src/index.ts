@@ -39,6 +39,14 @@ export type UserRole =
  * service, so it necessarily duplicates the string values rather than
  * importing this union) for what each grants access to; `apps/web`'s BAC-21
  * appointments UI (`rolePermissions.ts`) is the only frontend consumer.
+ * `'read_patient_profile'`/`'write_patient_profile'` were added by BAC-44 for
+ * `services/emr`'s patient baseline-profile endpoints (allergies/chronic
+ * conditions/long-term medications) -- see that service's
+ * `role-permissions.map.ts` for why, unlike `'write_patient'`/
+ * `'write_encounter'`, `'write_patient_profile'` IS granted to `staff` (this
+ * is front-desk intake data entry, not clinical documentation authorship or
+ * core legal-identity authoring), and for how `'patient'` (BAC-41) is granted
+ * both, narrowly self-scoped via `assertPatientScope`.
  */
 export type Permission =
   | 'manage_user_roles'
@@ -49,7 +57,9 @@ export type Permission =
   | 'write_encounter'
   | 'review_patient_self_registration'
   | 'read_appointments'
-  | 'manage_appointments';
+  | 'manage_appointments'
+  | 'read_patient_profile'
+  | 'write_patient_profile';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -506,6 +516,91 @@ export interface EncounterCreatedEvent {
   tenantId: string;
   /** ISO-8601 timestamp of creation. */
   createdAt: string;
+}
+
+/**
+ * `services/emr` (BAC-44). A chronic (long-term/ongoing) condition recorded
+ * on a patient's baseline profile -- distinct from an `Allergy` (BAC-15,
+ * above, reused as-is here rather than redefined) and from `Medication`
+ * (below).
+ */
+export interface ChronicCondition {
+  name: string;
+  /** ISO-8601 date (`YYYY-MM-DD`), if known. */
+  diagnosedDate?: string;
+  notes?: string;
+}
+
+/**
+ * `services/emr` (BAC-44). One long-term medication entry on a patient's
+ * baseline profile. Deliberately modeled as "the patient's CURRENT
+ * medications" (not "BAC-44's private copy") so a later staff-facing
+ * clinic UI ticket (BAC-34/35, not yet implemented anywhere in this repo as
+ * of this writing) can read/write the SAME underlying record this ticket
+ * creates instead of a parallel one -- see `services/emr`'s
+ * `patient-profile/` module doc comments for the full rationale.
+ */
+export interface Medication {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  notes?: string;
+}
+
+/**
+ * `services/emr` (BAC-44). Core demographics `GET`/`PUT
+ * /patients/:patientId/profile` echoes back alongside the baseline clinical
+ * fields -- READ-ONLY here (this endpoint never creates/edits a name or date
+ * of birth; see that service's `patient-profile/demographics.util.ts` for
+ * where these are actually sourced from, and its doc comments for the
+ * documented limits of that lookup). Every field is nullable: `null` when no
+ * source record could be found for this `patientId`.
+ */
+export interface PatientProfileDemographics {
+  firstName: string | null;
+  lastName: string | null;
+  /** ISO-8601 date (`YYYY-MM-DD`), or `null`. */
+  dateOfBirth: string | null;
+}
+
+/**
+ * Request body for `PUT /patients/:patientId/profile` (BAC-44): full-replace
+ * upsert semantics -- every field reflects the complete, current state of the
+ * patient's baseline profile after this call, not a partial patch. An empty
+ * array is a valid, meaningful value (e.g. "no known allergies", explicitly
+ * documented as such), distinct from "no profile has ever been saved" (see
+ * `PatientProfileResponse.hasProfile`).
+ */
+export interface UpsertPatientProfileRequest {
+  allergies: Allergy[];
+  chronicConditions: ChronicCondition[];
+  medications: Medication[];
+}
+
+/**
+ * Response body for both `GET` and `PUT /patients/:patientId/profile`
+ * (BAC-44). `hasProfile: false` (with empty arrays and `null`
+ * `id`/`createdAt`/`updatedAt`) is the well-formed, non-error shape
+ * `GET` returns for a patient who has never had a baseline profile saved --
+ * deliberately not a 404, so a first-login "let's build your profile" UI (a
+ * later ticket) can render an empty-state form directly from this response
+ * without a separate existence check.
+ */
+export interface PatientProfileResponse {
+  /** The profile row's own id; `null` when `hasProfile` is `false`. */
+  id: string | null;
+  patientId: string;
+  tenantId: string;
+  /** `false` only for a `GET` when no profile has ever been saved for this patient. */
+  hasProfile: boolean;
+  demographics: PatientProfileDemographics;
+  allergies: Allergy[];
+  chronicConditions: ChronicCondition[];
+  medications: Medication[];
+  /** ISO-8601 timestamp; `null` when `hasProfile` is `false`. */
+  createdAt: string | null;
+  /** ISO-8601 timestamp; `null` when `hasProfile` is `false`. */
+  updatedAt: string | null;
 }
 
 /**
