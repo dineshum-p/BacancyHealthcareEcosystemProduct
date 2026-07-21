@@ -27,16 +27,36 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export interface SchedulePageProps {
+  /**
+   * BAC-47: set when navigating here from the visit-intake queue's "Book
+   * appointment" link (`/appointments?patientId=...&patientName=...`) --
+   * forwarded straight through to `AppointmentBookingForm` so staff land
+   * with that patient already found/selected.
+   */
+  preselectedPatientId?: string;
+  preselectedPatientName?: string;
+}
+
 /** BAC-21: staff/provider appointment scheduling -- book, view the day, reschedule, and cancel. */
-export function SchedulePage() {
+export function SchedulePage({
+  preselectedPatientId,
+  preselectedPatientName,
+}: SchedulePageProps = {}) {
   return (
     <RequirePermission permission="read_appointments">
-      <ScheduleContent />
+      <ScheduleContent
+        preselectedPatientId={preselectedPatientId}
+        preselectedPatientName={preselectedPatientName}
+      />
     </RequirePermission>
   );
 }
 
-function ScheduleContent() {
+function ScheduleContent({
+  preselectedPatientId,
+  preselectedPatientName,
+}: SchedulePageProps) {
   const { user } = useCurrentUser();
   const [date, setDate] = useState(todayIsoDate());
   const [providerIdInput, setProviderIdInput] = useState("");
@@ -95,6 +115,8 @@ function ScheduleContent() {
           <CardContent>
             <AppointmentBookingForm
               fixedProviderId={isCrossProvider ? undefined : providerId}
+              preselectedPatientId={preselectedPatientId}
+              preselectedPatientName={preselectedPatientName}
               onSubmit={handleBook}
               isSubmitting={bookMutation.isPending}
             />

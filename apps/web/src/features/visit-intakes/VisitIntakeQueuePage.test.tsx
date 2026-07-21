@@ -2,10 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type {
-  PatientProfileResponse,
-  VisitIntakeSummary,
-} from "@hep/shared-types";
+import type { VisitIntakeSummary } from "@hep/shared-types";
 import { setStoredAccessToken } from "@/src/lib/auth/session";
 import * as useVisitIntakesModule from "./hooks/useVisitIntakes";
 import * as useLinkVisitIntakeModule from "./hooks/useLinkVisitIntake";

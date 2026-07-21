@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import type { PatientSummary } from "@hep/shared-types";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,21 @@ interface LookupFilters {
 
 export interface PatientLookupProps {
   onSelect: (patient: PatientSummary) => void;
+  /**
+   * BAC-47: pre-fills the search box and auto-searches on mount --
+   * navigating here from the visit-intake queue's "Book appointment" link
+   * (`patientName` query param) lands with a patient already searched for,
+   * instead of an empty lookup the staff caller has to repeat.
+   */
+  initialName?: string;
+  /**
+   * BAC-47: when the resulting search includes a patient with this id
+   * (`patientId` query param), auto-selects them -- same as clicking
+   * "Select" -- instead of requiring a manual click. If no result matches
+   * (e.g. the resolved name search doesn't turn up this exact patient),
+   * this silently falls back to the normal manual search/select flow.
+   */
+  initialPatientId?: string;
 }
 
 /**
@@ -23,18 +38,34 @@ export interface PatientLookupProps {
  * `services/scheduling` has no way to resolve a patient's contact info
  * itself and the caller (this form) must already have it on screen.
  */
-export function PatientLookup({ onSelect }: PatientLookupProps) {
+export function PatientLookup({
+  onSelect,
+  initialName,
+  initialPatientId,
+}: PatientLookupProps) {
   const [submittedName, setSubmittedName] = useState<string | undefined>(
-    undefined,
+    initialName?.trim() || undefined,
   );
   const { register, handleSubmit } = useForm<LookupFilters>({
-    defaultValues: { name: "" },
+    defaultValues: { name: initialName ?? "" },
   });
 
   const { data, isLoading, isError } = useSearchPatients({
     name: submittedName,
     page: 1,
   });
+
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current || !initialPatientId || !data) {
+      return;
+    }
+    const match = data.items.find((patient) => patient.id === initialPatientId);
+    if (match) {
+      autoSelectedRef.current = true;
+      onSelect(match);
+    }
+  }, [data, initialPatientId, onSelect]);
 
   function search(values: LookupFilters) {
     setSubmittedName(values.name.trim() || undefined);

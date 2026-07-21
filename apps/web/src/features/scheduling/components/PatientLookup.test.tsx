@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PaginatedPatientsResponse, PatientSummary } from "@hep/shared-types";
@@ -88,5 +88,67 @@ describe("PatientLookup (BAC-21, AC1 -- reuses BAC-17's patient search)", () => 
     await user.click(screen.getByRole("button", { name: /search/i }));
 
     expect(await screen.findByText(/no patients found/i)).toBeInTheDocument();
+  });
+
+  describe("BAC-47: pre-filling from the visit-intake queue's 'Book appointment' link", () => {
+    it("auto-searches on mount when given an initialName", async () => {
+      vi.spyOn(patientsApi, "searchPatients").mockResolvedValue({
+        items: [PATIENT],
+        page: 1,
+        limit: 20,
+        total: 1,
+      });
+
+      renderWithClient(
+        <PatientLookup onSelect={vi.fn()} initialName="Jane Doe" />,
+      );
+
+      await screen.findByText(/Doe, Jane/);
+      expect(patientsApi.searchPatients).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Jane Doe" }),
+      );
+      expect(screen.getByLabelText(/patient name/i)).toHaveValue("Jane Doe");
+    });
+
+    it("auto-selects the patient matching initialPatientId once results load", async () => {
+      vi.spyOn(patientsApi, "searchPatients").mockResolvedValue({
+        items: [PATIENT],
+        page: 1,
+        limit: 20,
+        total: 1,
+      });
+      const onSelect = vi.fn();
+
+      renderWithClient(
+        <PatientLookup
+          onSelect={onSelect}
+          initialName="Jane Doe"
+          initialPatientId="patient-1"
+        />,
+      );
+
+      await waitFor(() => expect(onSelect).toHaveBeenCalledWith(PATIENT));
+    });
+
+    it("does not auto-select when no result matches initialPatientId -- falls back to manual search", async () => {
+      vi.spyOn(patientsApi, "searchPatients").mockResolvedValue({
+        items: [PATIENT],
+        page: 1,
+        limit: 20,
+        total: 1,
+      });
+      const onSelect = vi.fn();
+
+      renderWithClient(
+        <PatientLookup
+          onSelect={onSelect}
+          initialName="Jane Doe"
+          initialPatientId="some-other-patient"
+        />,
+      );
+
+      await screen.findByText(/Doe, Jane/);
+      expect(onSelect).not.toHaveBeenCalled();
+    });
   });
 });
