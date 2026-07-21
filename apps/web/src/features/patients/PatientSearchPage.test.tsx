@@ -165,5 +165,15 @@ describe("PatientSearchPage", () => {
         screen.queryByRole("link", { name: /pending self-registrations/i }),
       ).not.toBeInTheDocument();
     });
+
+    it("shows a link to the appointments schedule (BAC-21)", () => {
+      mockUseSearchPatients({ data: { items: [], page: 1, limit: 20, total: 0 } });
+
+      render(<PatientSearchPage />);
+
+      expect(
+        screen.getByRole("link", { name: /appointments/i }),
+      ).toHaveAttribute("href", "/appointments");
+    });
   });
 });

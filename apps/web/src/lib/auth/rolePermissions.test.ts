@@ -31,3 +31,17 @@ describe("roleHasPermission (BAC-17, AC4)", () => {
     ).toBe(false);
   });
 });
+
+describe("roleHasPermission (BAC-21)", () => {
+  it("grants read_appointments and manage_appointments to every role", () => {
+    for (const role of [
+      "super_admin",
+      "clinic_admin",
+      "provider",
+      "staff",
+    ] as const) {
+      expect(roleHasPermission(role, "read_appointments")).toBe(true);
+      expect(roleHasPermission(role, "manage_appointments")).toBe(true);
+    }
+  });
+});

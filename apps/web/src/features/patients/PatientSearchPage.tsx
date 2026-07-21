@@ -66,6 +66,14 @@ function PatientSearchContent() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* BAC-21: every role holds `read_appointments`, so this is always shown once signed in -- SchedulePage's own RequirePermission is the real enforcement. */}
+          <Link
+            href="/appointments"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Appointments
+          </Link>
+
           {/* BAC-37: hidden entirely for a caller without review_patient_self_registration (e.g. provider) -- PendingSelfRegistrationsPage's own RequirePermission is the real enforcement, this just avoids advertising an action that would 403. */}
           {canReviewSelfRegistrations && (
             <Link
