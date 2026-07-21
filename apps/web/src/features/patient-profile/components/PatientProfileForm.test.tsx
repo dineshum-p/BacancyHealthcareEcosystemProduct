@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { PatientProfileResponse } from "@hep/shared-types";
 import { PatientProfileForm } from "./PatientProfileForm";
 
@@ -108,5 +109,155 @@ describe("PatientProfileForm", () => {
     );
 
     expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
+  });
+
+  it("rejects an allergy entry with no substance without calling onSubmit", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add allergy/i }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText(/substance is required/i)).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a chronic condition entry with no name without calling onSubmit", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add condition/i }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(
+      await screen.findByText(/condition name is required/i),
+    ).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a medication entry with no name without calling onSubmit", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add medication/i }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(
+      await screen.findByText(/medication name is required/i),
+    ).toBeInTheDocument();
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a chronic condition note over the backend's 500-char limit, matching chronic-condition.dto.ts (BAC-46)", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add condition/i }));
+    fireEvent.change(screen.getByLabelText(/condition/i), {
+      target: { value: "Asthma" },
+    });
+    fireEvent.change(screen.getByLabelText(/notes/i), {
+      target: { value: "a".repeat(501) },
+    });
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a medication note over the backend's 500-char limit, matching medication.dto.ts (BAC-46)", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add medication/i }));
+    fireEvent.change(screen.getByLabelText(/medication/i), {
+      target: { value: "Metformin" },
+    });
+    fireEvent.change(screen.getByLabelText(/notes/i), {
+      target: { value: "a".repeat(501) },
+    });
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a medication dosage over the backend's 100-char limit, matching medication.dto.ts (BAC-46)", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add medication/i }));
+    fireEvent.change(screen.getByLabelText(/medication/i), {
+      target: { value: "Metformin" },
+    });
+    fireEvent.change(screen.getByLabelText(/dosage/i), {
+      target: { value: "a".repeat(101) },
+    });
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a medication frequency over the backend's 100-char limit, matching medication.dto.ts (BAC-46)", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    render(
+      <PatientProfileForm
+        profile={EMPTY_PROFILE}
+        onSubmit={handleSubmit}
+        isSubmitting={false}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /add medication/i }));
+    fireEvent.change(screen.getByLabelText(/medication/i), {
+      target: { value: "Metformin" },
+    });
+    fireEvent.change(screen.getByLabelText(/frequency/i), {
+      target: { value: "a".repeat(101) },
+    });
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(handleSubmit).not.toHaveBeenCalled();
   });
 });

@@ -30,15 +30,15 @@ const profileFormSchema = z.object({
     z.object({
       name: z.string().trim().min(1, "Condition name is required").max(200),
       diagnosedDate: z.string().trim(),
-      notes: z.string().trim().max(1000),
+      notes: z.string().trim().max(500),
     }),
   ),
   medications: z.array(
     z.object({
       name: z.string().trim().min(1, "Medication name is required").max(200),
-      dosage: z.string().trim().max(200),
-      frequency: z.string().trim().max(200),
-      notes: z.string().trim().max(1000),
+      dosage: z.string().trim().max(100),
+      frequency: z.string().trim().max(100),
+      notes: z.string().trim().max(500),
     }),
   ),
 });
