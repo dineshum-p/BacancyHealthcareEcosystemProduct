@@ -425,7 +425,7 @@ describe('Auth (e2e)', () => {
       );
     });
 
-    it('AC1: GET /auth/roles returns the four seeded roles with their permission sets', async () => {
+    it('AC1: GET /auth/roles returns the five seeded roles with their permission sets', async () => {
       const response = await request(app.getHttpServer())
         .get('/auth/roles')
         .set('X-Tenant-Id', tenants.rbacTenant.slug)
@@ -435,6 +435,7 @@ describe('Auth (e2e)', () => {
       const roles = response.body as RoleDefinition[];
       expect(roles.map((r) => r.role).sort()).toEqual([
         'clinic_admin',
+        'patient',
         'provider',
         'staff',
         'super_admin',
@@ -445,6 +446,10 @@ describe('Auth (e2e)', () => {
       );
       const staff = roles.find((r) => r.role === 'staff');
       expect(staff?.permissions).not.toContain('manage_user_roles');
+      // BAC-41: patient is default-deny -- an empty permission set, not
+      // silent inheritance of any staff-side permission.
+      const patient = roles.find((r) => r.role === 'patient');
+      expect(patient?.permissions).toEqual([]);
     });
 
     it('GET /auth/roles requires authentication (401 with no Bearer token)', async () => {

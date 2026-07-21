@@ -7,9 +7,10 @@ import { Permission } from './permission.enum';
  * (this service is the registration/search counterpart to that FHIR
  * gateway):
  * - `READ_PATIENT` (searching/looking up patients, AC3) is granted to every
- *   role: any authenticated platform user (including front-desk `STAFF`)
- *   plausibly needs to look up/search for a patient (e.g. to check one in
- *   for a visit), and reading is a much lower-risk operation than authoring.
+ *   staff-side role (excluding `PATIENT`, BAC-41's default-deny role): any
+ *   authenticated platform user (including front-desk `STAFF`) plausibly
+ *   needs to look up/search for a patient (e.g. to check one in for a
+ *   visit), and reading is a much lower-risk operation than authoring.
  * - `WRITE_PATIENT` (registering a new patient and assigning their MRN, AC1)
  *   is granted to `SUPER_ADMIN`, `CLINIC_ADMIN`, and `PROVIDER` only --
  *   deliberately NOT `STAFF`. This is a clinical-identity-integrity
