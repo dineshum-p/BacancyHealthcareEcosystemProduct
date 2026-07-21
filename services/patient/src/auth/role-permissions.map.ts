@@ -17,14 +17,36 @@ import { Permission } from './permission.enum';
  *   has downstream clinical-safety consequences (e.g. mis-matched records),
  *   so this ticket restricts authoring that resource to clinical/
  *   administrative roles, exactly as `services/emr`'s BAC-10 map does.
+ * - `REVIEW_SELF_REGISTRATION` (BAC-36: viewing the pending online
+ *   self-registration queue and approving/rejecting/merging an entry) is
+ *   granted to `SUPER_ADMIN`, `CLINIC_ADMIN`, AND `STAFF` -- deliberately a
+ *   NARROWER, separate capability from `WRITE_PATIENT`, not folded into it:
+ *   confirming that a self-registration is who they claim to be (against
+ *   duplicate-detection evidence) is front-desk triage work `STAFF`
+ *   plausibly does today, unlike authoring a brand-new patient's core
+ *   demographics/MRN from scratch, which stays clinical/administrative-only.
+ *   `PROVIDER` deliberately does NOT get this permission (per BAC-36's AC:
+ *   "provider has no special access to this queue beyond normal
+ *   read_patient once a registration is confirmed").
  */
 export const ROLE_PERMISSIONS: Readonly<
   Record<UserRole, readonly Permission[]>
 > = {
-  [UserRole.SUPER_ADMIN]: [Permission.READ_PATIENT, Permission.WRITE_PATIENT],
-  [UserRole.CLINIC_ADMIN]: [Permission.READ_PATIENT, Permission.WRITE_PATIENT],
+  [UserRole.SUPER_ADMIN]: [
+    Permission.READ_PATIENT,
+    Permission.WRITE_PATIENT,
+    Permission.REVIEW_SELF_REGISTRATION,
+  ],
+  [UserRole.CLINIC_ADMIN]: [
+    Permission.READ_PATIENT,
+    Permission.WRITE_PATIENT,
+    Permission.REVIEW_SELF_REGISTRATION,
+  ],
   [UserRole.PROVIDER]: [Permission.READ_PATIENT, Permission.WRITE_PATIENT],
-  [UserRole.STAFF]: [Permission.READ_PATIENT],
+  [UserRole.STAFF]: [
+    Permission.READ_PATIENT,
+    Permission.REVIEW_SELF_REGISTRATION,
+  ],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

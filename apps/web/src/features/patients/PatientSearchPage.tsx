@@ -42,6 +42,9 @@ function PatientSearchContent() {
   const canViewEncounters = user
     ? roleHasPermission(user.role, "read_encounter")
     : false;
+  const canReviewSelfRegistrations = user
+    ? roleHasPermission(user.role, "review_patient_self_registration")
+    : false;
 
   const query: PatientSearchQuery = { ...filters, page };
   const { data, isLoading, isError } = useSearchPatients(query);
@@ -65,15 +68,35 @@ function PatientSearchContent() {
           </p>
         </div>
 
-        {/* BAC-17, AC4: hidden entirely for a caller without write_patient -- RegisterPatientPage's own RequirePermission is the real enforcement, this just avoids advertising an action that would 403. */}
-        {canRegister && (
+        <div className="flex items-center gap-3">
+          {/* BAC-21: every role holds `read_appointments`, so this is always shown once signed in -- SchedulePage's own RequirePermission is the real enforcement. */}
           <Link
-            href="/patients/register"
-            className={buttonVariants({ variant: "default" })}
+            href="/appointments"
+            className={buttonVariants({ variant: "outline" })}
           >
-            Register patient
+            Appointments
           </Link>
-        )}
+
+          {/* BAC-37: hidden entirely for a caller without review_patient_self_registration (e.g. provider) -- PendingSelfRegistrationsPage's own RequirePermission is the real enforcement, this just avoids advertising an action that would 403. */}
+          {canReviewSelfRegistrations && (
+            <Link
+              href="/patients/self-registrations"
+              className={buttonVariants({ variant: "outline" })}
+            >
+              Pending self-registrations
+            </Link>
+          )}
+
+          {/* BAC-17, AC4: hidden entirely for a caller without write_patient -- RegisterPatientPage's own RequirePermission is the real enforcement, this just avoids advertising an action that would 403. */}
+          {canRegister && (
+            <Link
+              href="/patients/register"
+              className={buttonVariants({ variant: "default" })}
+            >
+              Register patient
+            </Link>
+          )}
+        </div>
       </div>
 
       <PatientSearchForm onSubmit={handleSearch} />

@@ -3,8 +3,9 @@ import { RequestWithTenant } from './request-with-tenant.interface';
 
 function makeRequest(
   headers: Record<string, string | string[] | undefined>,
+  params?: Record<string, string>,
 ): RequestWithTenant {
-  return { headers } as unknown as RequestWithTenant;
+  return { headers, params } as unknown as RequestWithTenant;
 }
 
 describe('resolveTenantIdentifier', () => {
@@ -44,5 +45,41 @@ describe('resolveTenantIdentifier', () => {
   it('returns null for a blank header value with no usable host', () => {
     const request = makeRequest({ 'x-tenant-id': '   ' });
     expect(resolveTenantIdentifier(request)).toBeNull();
+  });
+
+  describe('BAC-36: :tenantSlug route param (public, unauthenticated routes)', () => {
+    it('falls back to a :tenantSlug route param when no header is present', () => {
+      const request = makeRequest({}, { tenantSlug: 'acme' });
+      expect(resolveTenantIdentifier(request)).toBe('acme');
+    });
+
+    it('prefers the X-Tenant-Id header over a :tenantSlug route param', () => {
+      const request = makeRequest(
+        { 'x-tenant-id': 'from-header' },
+        { tenantSlug: 'from-param' },
+      );
+      expect(resolveTenantIdentifier(request)).toBe('from-header');
+    });
+
+    it('prefers a :tenantSlug route param over a Host subdomain', () => {
+      const request = makeRequest(
+        { host: 'other.app.example.com' },
+        { tenantSlug: 'from-param' },
+      );
+      expect(resolveTenantIdentifier(request)).toBe('from-param');
+    });
+
+    it('trims whitespace from the route param value', () => {
+      const request = makeRequest({}, { tenantSlug: '  acme  ' });
+      expect(resolveTenantIdentifier(request)).toBe('acme');
+    });
+
+    it('ignores a blank :tenantSlug route param, falling back to the host', () => {
+      const request = makeRequest(
+        { host: 'acme.app.example.com' },
+        { tenantSlug: '   ' },
+      );
+      expect(resolveTenantIdentifier(request)).toBe('acme');
+    });
   });
 });

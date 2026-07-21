@@ -16,4 +16,14 @@ export enum Permission {
   READ_PATIENT = 'read_patient',
   /** Grants access to `POST /patients` (BAC-14, AC1). */
   WRITE_PATIENT = 'write_patient',
+  /**
+   * Grants access to the pending-self-registration queue and the
+   * approve/reject/merge actions on it (BAC-36): `GET
+   * /patients/self-registrations`, `POST
+   * /patients/self-registrations/:id/approve`, `.../reject`, `.../merge`.
+   * Deliberately narrower than `WRITE_PATIENT` -- see
+   * `role-permissions.map.ts`'s doc comment for why `staff` is granted THIS
+   * permission but not `WRITE_PATIENT`.
+   */
+  REVIEW_SELF_REGISTRATION = 'review_patient_self_registration',
 }

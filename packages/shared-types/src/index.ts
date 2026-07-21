@@ -16,7 +16,12 @@ export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
  * caller's `role` claim. `'read_patient'`/`'write_patient'` were added by
  * BAC-10 -- see `services/emr`'s `permission.enum.ts` for what each grants
  * access to. `'read_encounter'`/`'write_encounter'` were added by BAC-15 for
- * that same service's SOAP encounter-note endpoints.
+ * that same service's SOAP encounter-note endpoints. `'read_appointments'`/
+ * `'manage_appointments'` were added by BAC-16/BAC-21 -- see
+ * `services/scheduling`'s own `permission.enum.ts` (a separately-deployed
+ * service, so it necessarily duplicates the string values rather than
+ * importing this union) for what each grants access to; `apps/web`'s BAC-21
+ * appointments UI (`rolePermissions.ts`) is the only frontend consumer.
  */
 export type Permission =
   | 'manage_user_roles'
@@ -24,7 +29,10 @@ export type Permission =
   | 'read_patient'
   | 'write_patient'
   | 'read_encounter'
-  | 'write_encounter';
+  | 'write_encounter'
+  | 'review_patient_self_registration'
+  | 'read_appointments'
+  | 'manage_appointments';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -692,4 +700,175 @@ export interface PricingQuote {
   onboardingTotal: number;
   /** Flat recurring monthly platform fee for the chosen tier (PRD 6.2). */
   monthlyPlatformFee: number;
+}
+
+/**
+ * `services/patient` (BAC-36). Request body for the PUBLIC, unauthenticated
+ * `POST /public/tenants/:tenantSlug/patients` endpoint: a patient submitting
+ * their own registration online, without an in-person identity check. Same
+ * shape as `RegisterPatientRequest` (BAC-14's staff-driven counterpart) --
+ * self-registration collects the same core demographics, just through a
+ * different (unauthenticated, pending-review) intake path.
+ */
+export type SelfRegisterPatientRequest = RegisterPatientRequest;
+
+/**
+ * Lifecycle of a self-submitted registration (BAC-36): `pending` immediately
+ * after submission (not yet searchable/trusted); `approved` once staff
+ * confirm it as a genuinely new patient (a real `patients` row -- with an
+ * MRN -- is created at that point); `rejected` when staff determine it is
+ * not legitimate; `merged` when staff determine it duplicates an existing
+ * patient and link it to that patient's record instead of creating a new
+ * one.
+ */
+export type PatientSelfRegistrationStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'merged';
+
+/**
+ * Response body for `POST /public/tenants/:tenantSlug/patients` (BAC-36).
+ * Deliberately minimal -- it must NOT leak whether a probable-duplicate match
+ * was found (that is staff-only information, see
+ * `PatientSelfRegistrationSummary.matchedPatientId`) to the anonymous public
+ * caller.
+ */
+export interface SelfRegistrationReceipt {
+  id: string;
+  tenantId: string;
+  status: PatientSelfRegistrationStatus;
+  createdAt: string;
+}
+
+/**
+ * A pending (or reviewed) self-registration as seen by staff reviewing the
+ * queue (BAC-36): `GET /patients/self-registrations`. `matchedPatientId`/
+ * `matchReason` are populated by duplicate detection at submission time --
+ * "this looks like it might be an existing patient" -- and are non-null only
+ * when a probable match was found; they do NOT auto-create/link anything by
+ * themselves, they only inform the staff reviewer's approve/reject/merge
+ * decision. `resultingPatientId` is set once reviewed: the newly created
+ * `patients` row on approval, or the matched existing patient's id on merge;
+ * always `null` while `status` is `'pending'` or after `'rejected'`.
+ */
+export interface PatientSelfRegistrationSummary {
+  id: string;
+  tenantId: string;
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`). */
+  dateOfBirth: string;
+  gender: PatientGender | null;
+  phone: string | null;
+  email: string | null;
+  status: PatientSelfRegistrationStatus;
+  matchedPatientId: string | null;
+  /** Why `matchedPatientId` was flagged, e.g. `'name_dob'`, `'phone'`, `'email'`. */
+  matchReason: string | null;
+  resultingPatientId: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Request body for `POST /patients/self-registrations/:id/reject` (BAC-36). */
+export interface RejectSelfRegistrationRequest {
+  reason?: string;
+}
+
+/**
+ * Request body for `POST /patients/self-registrations/:id/merge` (BAC-36):
+ * staff confirming the self-registration IS the same person as an existing
+ * patient. `targetPatientId` defaults to the duplicate-detection candidate
+ * (`PatientSelfRegistrationSummary.matchedPatientId`) on the client, but
+ * staff may override it to point at a different existing patient than the
+ * one duplicate detection proposed.
+ */
+export interface MergeSelfRegistrationRequest {
+  targetPatientId: string;
+}
+
+/**
+ * `services/scheduling` (BAC-16). Lifecycle of a single-provider appointment
+ * slot: `booked` on creation, `cancelled` once cancelled. There is no
+ * separate `rescheduled` value -- a reschedule keeps `status: 'booked'` and
+ * simply updates `startTime`/`endTime` (the status TRANSITION -- old
+ * time range -> new time range, or `booked` -> `cancelled` -- is what gets
+ * recorded in the audit log, per `PATCH /appointments/:id`'s AC). Deliberately
+ * only these two values: this ticket explicitly excludes recurring
+ * appointments and cross-provider conflict/resource allocation, so there is
+ * no `no-show`/`completed`/etc. lifecycle to model yet.
+ */
+export type AppointmentStatus = 'booked' | 'cancelled';
+
+/**
+ * Request body for `POST /appointments` (BAC-16, AC1): books a single slot
+ * for one patient with one provider. `notifyChannel`/`notifyTo` carry the
+ * patient's confirmation-delivery destination (an email address or phone
+ * number) -- `services/scheduling` does not itself store patient contact
+ * details (that's `services/patient`'s (BAC-14) data), so the caller (which
+ * already has the patient record on screen, e.g. from a prior
+ * `GET /patients` search) supplies where the booking confirmation
+ * (`services/notification`, BAC-9) should be sent.
+ */
+export interface CreateAppointmentRequest {
+  /** The user id (JWT `sub`/`userId`) of the provider this slot is booked with. */
+  providerId: string;
+  /** `services/patient`'s (BAC-14) patient id. */
+  patientId: string;
+  /** ISO-8601 date-time; start of the slot. */
+  startTime: string;
+  /** ISO-8601 date-time; end of the slot. Must be after `startTime`. */
+  endTime: string;
+  notifyChannel: NotificationChannel;
+  /** Email address or phone number, matching `notifyChannel`. */
+  notifyTo: string;
+}
+
+/**
+ * An appointment as returned by every `services/scheduling` endpoint
+ * (BAC-16): `POST /appointments`, `GET /appointments`,
+ * `PATCH /appointments/:id`.
+ */
+export interface AppointmentSummary {
+  id: string;
+  tenantId: string;
+  providerId: string;
+  patientId: string;
+  /** ISO-8601 date-time. */
+  startTime: string;
+  /** ISO-8601 date-time. */
+  endTime: string;
+  status: AppointmentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /appointments` query params (BAC-16, AC2): a single calendar day's schedule. */
+export interface AppointmentQuery {
+  /** ISO-8601 date (`YYYY-MM-DD`), no time component -- the calendar day (UTC) to list. */
+  date: string;
+  /**
+   * Required for `clinic_admin`/`staff` (who may query any provider's day);
+   * ignored (always resolves to the caller's own user id) for `provider`,
+   * who may only view their own calendar. See `services/scheduling`'s
+   * `provider-scope.util.ts`.
+   */
+  providerId?: string;
+}
+
+/**
+ * Request body for `PATCH /appointments/:id` (BAC-16, AC3): either
+ * reschedules a booked appointment to a new time range, or cancels it.
+ * `startTime`/`endTime` are required when (and only meaningful when)
+ * `action` is `'reschedule'`.
+ */
+export interface UpdateAppointmentRequest {
+  action: 'reschedule' | 'cancel';
+  /** ISO-8601 date-time; required when `action` is `'reschedule'`. */
+  startTime?: string;
+  /** ISO-8601 date-time; required when `action` is `'reschedule'`. */
+  endTime?: string;
 }
