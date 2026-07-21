@@ -37,6 +37,12 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * feature. `super_admin` is treated like `clinic_admin` (read-only oversight,
  * no write) since the ticket doesn't call it out explicitly; this is a
  * judgment call, not dictated by an explicit acceptance criterion.
+ *
+ * `patient` (BAC-41) is a type-completeness addition only: every backend
+ * service's own `ROLE_PERMISSIONS` map grants `patient` NONE of these
+ * permissions yet (default-deny -- see BAC-41's report), so there is no real
+ * UI gating decision to make here until a later, patient-portal-facing
+ * ticket adds one.
  */
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   super_admin: [
@@ -69,6 +75,7 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "read_appointments",
     "manage_appointments",
   ],
+  patient: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

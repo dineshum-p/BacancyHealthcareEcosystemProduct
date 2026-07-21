@@ -15,9 +15,15 @@ import { Permission } from './permission.enum';
  *   grant (e.g. preventing a `CLINIC_ADMIN` from granting `SUPER_ADMIN`) is
  *   deliberately out of scope for this minimal implementation -- documented
  *   here, not silently omitted.
- * - `VIEW_USERS` is granted to every role. It has no endpoint of its own yet
- *   (see `permission.enum.ts`); it exists purely to prove the guard/decorator
- *   mechanism checks an arbitrary permission, not just `MANAGE_USER_ROLES`.
+ * - `VIEW_USERS` is granted to every staff-side role. It has no endpoint of
+ *   its own yet (see `permission.enum.ts`); it exists purely to prove the
+ *   guard/decorator mechanism checks an arbitrary permission, not just
+ *   `MANAGE_USER_ROLES`.
+ * - `PATIENT` (BAC-41) is deliberately granted NEITHER permission above --
+ *   default-deny, not silent inheritance of a staff-side permission set.
+ *   This ticket adds the role and its (empty) entry here only; a later
+ *   ticket can layer narrow, self-scoped permissions on top if this
+ *   service ever gains a patient-owned resource of its own.
  */
 export const ROLE_PERMISSIONS: Readonly<
   Record<UserRole, readonly Permission[]>
@@ -29,14 +35,16 @@ export const ROLE_PERMISSIONS: Readonly<
   ],
   [UserRole.PROVIDER]: [Permission.VIEW_USERS],
   [UserRole.STAFF]: [Permission.VIEW_USERS],
+  [UserRole.PATIENT]: [],
 };
 
-/** All four roles, in a stable order, for `GET /auth/roles` (AC1). */
+/** All five roles, in a stable order, for `GET /auth/roles` (AC1; `patient` added by BAC-41). */
 export const ALL_ROLES: readonly UserRole[] = [
   UserRole.SUPER_ADMIN,
   UserRole.CLINIC_ADMIN,
   UserRole.PROVIDER,
   UserRole.STAFF,
+  UserRole.PATIENT,
 ];
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

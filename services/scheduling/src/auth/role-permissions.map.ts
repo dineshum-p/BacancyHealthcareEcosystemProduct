@@ -31,6 +31,15 @@ export const ROLE_PERMISSIONS: Readonly<
     Permission.MANAGE_APPOINTMENTS,
     Permission.READ_APPOINTMENTS,
   ],
+  /**
+   * `PATIENT` (BAC-41) is deliberately granted NEITHER permission above --
+   * default-deny, not silent inheritance of a staff-side permission set.
+   * This ticket only adds the role and lays the `patient-scope.util.ts`
+   * foundation a later ticket (e.g. BAC-45) would consume to grant a
+   * NARROW, self-scoped version of these permissions (e.g. "read/manage
+   * only MY OWN appointments").
+   */
+  [UserRole.PATIENT]: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

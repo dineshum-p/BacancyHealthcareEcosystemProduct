@@ -7,9 +7,10 @@ import { Permission } from './permission.enum';
  * (this service is the registration/search counterpart to that FHIR
  * gateway):
  * - `READ_PATIENT` (searching/looking up patients, AC3) is granted to every
- *   role: any authenticated platform user (including front-desk `STAFF`)
- *   plausibly needs to look up/search for a patient (e.g. to check one in
- *   for a visit), and reading is a much lower-risk operation than authoring.
+ *   staff-side role (excluding `PATIENT`, BAC-41's default-deny role): any
+ *   authenticated platform user (including front-desk `STAFF`) plausibly
+ *   needs to look up/search for a patient (e.g. to check one in for a
+ *   visit), and reading is a much lower-risk operation than authoring.
  * - `WRITE_PATIENT` (registering a new patient and assigning their MRN, AC1)
  *   is granted to `SUPER_ADMIN`, `CLINIC_ADMIN`, and `PROVIDER` only --
  *   deliberately NOT `STAFF`. This is a clinical-identity-integrity
@@ -47,6 +48,15 @@ export const ROLE_PERMISSIONS: Readonly<
     Permission.READ_PATIENT,
     Permission.REVIEW_SELF_REGISTRATION,
   ],
+  /**
+   * `PATIENT` (BAC-41) is deliberately granted NONE of the permissions
+   * above -- default-deny, not silent inheritance of a staff-side
+   * permission set. A later ticket (e.g. BAC-44) that wants a patient to
+   * read their OWN record would need to grant a narrow permission here AND
+   * enforce ownership via a `patient-scope.util.ts`-style utility (see that
+   * file, added by this ticket) -- neither exists yet.
+   */
+  [UserRole.PATIENT]: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

@@ -5,11 +5,11 @@ import { Permission } from './permission.enum';
  * The role -> permission-set mapping for the FHIR gateway (BAC-10, AC4).
  *
  * Documented choices:
- * - `READ_PATIENT` is granted to every role: any authenticated platform user
- *   (including front-desk `STAFF`) plausibly needs to look up a patient
- *   record they already know the id for (e.g. to check in a patient for a
- *   visit), and reading a resource is a much lower-risk operation than
- *   authoring one.
+ * - `READ_PATIENT` is granted to every staff-side role (excluding `PATIENT`,
+ *   BAC-41's default-deny role): any authenticated platform user (including
+ *   front-desk `STAFF`) plausibly needs to look up a patient record they
+ *   already know the id for (e.g. to check in a patient for a visit), and
+ *   reading a resource is a much lower-risk operation than authoring one.
  * - `WRITE_PATIENT` (creating/amending the FHIR `Patient` resource that
  *   establishes a patient's core demographic identity) is granted to
  *   `SUPER_ADMIN`, `CLINIC_ADMIN`, and `PROVIDER` only -- deliberately NOT
@@ -52,6 +52,15 @@ export const ROLE_PERMISSIONS: Readonly<
     Permission.WRITE_ENCOUNTER,
   ],
   [UserRole.STAFF]: [Permission.READ_PATIENT, Permission.READ_ENCOUNTER],
+  /**
+   * `PATIENT` (BAC-41) is deliberately granted NONE of the permissions
+   * above -- default-deny, not silent inheritance of a staff-side
+   * permission set. A later ticket (e.g. BAC-44) that wants a patient to
+   * read their OWN chart would need to grant a narrow permission here AND
+   * enforce ownership via a `patient-scope.util.ts`-style utility (see that
+   * file, added by this ticket) -- neither exists yet.
+   */
+  [UserRole.PATIENT]: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
