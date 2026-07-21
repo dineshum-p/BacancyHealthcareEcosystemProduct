@@ -150,7 +150,7 @@ describe("PatientSignUpPage", () => {
     );
     expect(getStoredAccessToken()).toBe(tokens.accessToken);
     expect(getStoredRefreshToken()).toBe(tokens.refreshToken);
-    expect(replace).toHaveBeenCalledWith("/patients");
+    expect(replace).toHaveBeenCalledWith("/profile");
   });
 
   it("shows a duplicate-email error and does not attempt auto-login (409)", async () => {

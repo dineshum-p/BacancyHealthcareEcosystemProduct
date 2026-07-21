@@ -12,4 +12,8 @@ describe("resolveDashboardPath", () => {
       expect(resolveDashboardPath(role)).toBe("/patients");
     },
   );
+
+  it("sends a patient to their own profile/onboarding page, not the staff patient search", () => {
+    expect(resolveDashboardPath("patient")).toBe("/profile");
+  });
 });
