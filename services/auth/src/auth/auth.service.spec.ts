@@ -361,7 +361,7 @@ describe('AuthService', () => {
   });
 
   describe('listRoles (AC1)', () => {
-    it('returns all four seeded roles with their permission sets', () => {
+    it('returns all five seeded roles with their permission sets (BAC-41 adds patient)', () => {
       const roles = service.listRoles();
 
       expect(roles.map((r) => r.role).sort()).toEqual(
@@ -370,6 +370,7 @@ describe('AuthService', () => {
           UserRole.CLINIC_ADMIN,
           UserRole.PROVIDER,
           UserRole.STAFF,
+          UserRole.PATIENT,
         ].sort(),
       );
       // `roles` is typed against `@hep/shared-types`' plain string-literal
@@ -379,6 +380,10 @@ describe('AuthService', () => {
       expect(superAdmin?.permissions).toContain('manage_user_roles');
       const staff = roles.find((r) => r.role === 'staff');
       expect(staff?.permissions).not.toContain('manage_user_roles');
+      // BAC-41: patient is default-deny -- no permissions inherited from
+      // any staff-side role.
+      const patient = roles.find((r) => r.role === 'patient');
+      expect(patient?.permissions).toEqual([]);
     });
   });
 
