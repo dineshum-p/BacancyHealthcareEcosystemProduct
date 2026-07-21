@@ -29,6 +29,20 @@ import { Permission } from './permission.enum';
  *   deliberately NOT `STAFF` -- mirroring `WRITE_PATIENT`'s exact rationale:
  *   clinical documentation authorship is restricted to clinical/
  *   administrative roles, not front-desk staff.
+ * - `READ_PATIENT_PROFILE`/`WRITE_PATIENT_PROFILE` (BAC-44, the patient
+ *   baseline profile -- allergies/chronic conditions/long-term medications)
+ *   are granted to EVERY staff-side role, INCLUDING `STAFF` for the write
+ *   permission too -- deliberately UNLIKE `WRITE_PATIENT`/`WRITE_ENCOUNTER`.
+ *   This is a different kind of action than either of those: it is not
+ *   authoring clinical documentation (a provider's clinical judgment, like a
+ *   SOAP note) nor establishing a patient's core legal identity (like the
+ *   FHIR `Patient` resource); it is closer to front-desk intake data entry
+ *   (recording what a patient reports about their own allergy/medication/
+ *   condition history), which `STAFF` routinely performs at check-in in a
+ *   real clinic. Row-level ownership (a `PATIENT` may only ever touch their
+ *   OWN profile) is enforced separately, per-request, by
+ *   `assertPatientScope` (BAC-41) -- NOT expressible in this role-level map,
+ *   which only decides "can this role attempt the action at all".
  */
 export const ROLE_PERMISSIONS: Readonly<
   Record<UserRole, readonly Permission[]>
@@ -38,29 +52,46 @@ export const ROLE_PERMISSIONS: Readonly<
     Permission.WRITE_PATIENT,
     Permission.READ_ENCOUNTER,
     Permission.WRITE_ENCOUNTER,
+    Permission.READ_PATIENT_PROFILE,
+    Permission.WRITE_PATIENT_PROFILE,
   ],
   [UserRole.CLINIC_ADMIN]: [
     Permission.READ_PATIENT,
     Permission.WRITE_PATIENT,
     Permission.READ_ENCOUNTER,
     Permission.WRITE_ENCOUNTER,
+    Permission.READ_PATIENT_PROFILE,
+    Permission.WRITE_PATIENT_PROFILE,
   ],
   [UserRole.PROVIDER]: [
     Permission.READ_PATIENT,
     Permission.WRITE_PATIENT,
     Permission.READ_ENCOUNTER,
     Permission.WRITE_ENCOUNTER,
+    Permission.READ_PATIENT_PROFILE,
+    Permission.WRITE_PATIENT_PROFILE,
   ],
-  [UserRole.STAFF]: [Permission.READ_PATIENT, Permission.READ_ENCOUNTER],
+  [UserRole.STAFF]: [
+    Permission.READ_PATIENT,
+    Permission.READ_ENCOUNTER,
+    Permission.READ_PATIENT_PROFILE,
+    Permission.WRITE_PATIENT_PROFILE,
+  ],
   /**
-   * `PATIENT` (BAC-41) is deliberately granted NONE of the permissions
-   * above -- default-deny, not silent inheritance of a staff-side
-   * permission set. A later ticket (e.g. BAC-44) that wants a patient to
-   * read their OWN chart would need to grant a narrow permission here AND
-   * enforce ownership via a `patient-scope.util.ts`-style utility (see that
-   * file, added by this ticket) -- neither exists yet.
+   * `PATIENT` (BAC-41) is granted NOTHING except BAC-44's own narrow,
+   * self-scoped profile permissions -- still default-deny for every
+   * pre-existing staff-side permission (`READ_PATIENT`/`WRITE_PATIENT`/
+   * `READ_ENCOUNTER`/`WRITE_ENCOUNTER`). `READ_PATIENT_PROFILE`/
+   * `WRITE_PATIENT_PROFILE` are granted here because BAC-44's whole point is
+   * letting a patient view/edit their OWN baseline profile; the role-level
+   * grant only says "a patient may attempt this action type" -- ownership
+   * (their OWN record, never another patient's) is enforced separately by
+   * `PatientProfileService` via `assertPatientScope`.
    */
-  [UserRole.PATIENT]: [],
+  [UserRole.PATIENT]: [
+    Permission.READ_PATIENT_PROFILE,
+    Permission.WRITE_PATIENT_PROFILE,
+  ],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
