@@ -6,20 +6,23 @@ import {
   ROLE_PERMISSIONS,
 } from './role-permissions.map';
 
+/** The four pre-BAC-41 clinic-staff-side roles, i.e. everyone except `patient`. */
+const STAFF_SIDE_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.CLINIC_ADMIN,
+  UserRole.PROVIDER,
+  UserRole.STAFF,
+] as const;
+
 describe('role-permissions.map', () => {
-  it('defines a permission set for every one of the four roles', () => {
+  it('defines a permission set for every one of the five roles (BAC-41 adds patient)', () => {
     expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(
-      [
-        UserRole.SUPER_ADMIN,
-        UserRole.CLINIC_ADMIN,
-        UserRole.PROVIDER,
-        UserRole.STAFF,
-      ].sort(),
+      [...STAFF_SIDE_ROLES, UserRole.PATIENT].sort(),
     );
   });
 
-  it('grants READ_PATIENT to every role (AC4)', () => {
-    for (const role of Object.values(UserRole)) {
+  it('grants READ_PATIENT to every staff-side role (AC4)', () => {
+    for (const role of STAFF_SIDE_ROLES) {
       expect(roleHasPermission(role, Permission.READ_PATIENT)).toBe(true);
     }
   });
@@ -46,8 +49,8 @@ describe('role-permissions.map', () => {
     ]);
   });
 
-  it('grants READ_ENCOUNTER to every role (BAC-15, AC2)', () => {
-    for (const role of Object.values(UserRole)) {
+  it('grants READ_ENCOUNTER to every staff-side role (BAC-15, AC2)', () => {
+    for (const role of STAFF_SIDE_ROLES) {
       expect(roleHasPermission(role, Permission.READ_ENCOUNTER)).toBe(true);
     }
   });
@@ -65,5 +68,26 @@ describe('role-permissions.map', () => {
     expect(roleHasPermission(UserRole.STAFF, Permission.WRITE_ENCOUNTER)).toBe(
       false,
     );
+  });
+
+  describe('BAC-41: patient is default-deny', () => {
+    it('grants patient NONE of the existing staff-only permissions', () => {
+      expect(roleHasPermission(UserRole.PATIENT, Permission.READ_PATIENT)).toBe(
+        false,
+      );
+      expect(
+        roleHasPermission(UserRole.PATIENT, Permission.WRITE_PATIENT),
+      ).toBe(false);
+      expect(
+        roleHasPermission(UserRole.PATIENT, Permission.READ_ENCOUNTER),
+      ).toBe(false);
+      expect(
+        roleHasPermission(UserRole.PATIENT, Permission.WRITE_ENCOUNTER),
+      ).toBe(false);
+    });
+
+    it('getPermissionsForRole returns an empty set for patient', () => {
+      expect(getPermissionsForRole(UserRole.PATIENT)).toEqual([]);
+    });
   });
 });

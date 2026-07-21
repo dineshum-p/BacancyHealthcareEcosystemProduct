@@ -52,6 +52,15 @@ export const ROLE_PERMISSIONS: Readonly<
     Permission.WRITE_ENCOUNTER,
   ],
   [UserRole.STAFF]: [Permission.READ_PATIENT, Permission.READ_ENCOUNTER],
+  /**
+   * `PATIENT` (BAC-41) is deliberately granted NONE of the permissions
+   * above -- default-deny, not silent inheritance of a staff-side
+   * permission set. A later ticket (e.g. BAC-44) that wants a patient to
+   * read their OWN chart would need to grant a narrow permission here AND
+   * enforce ownership via a `patient-scope.util.ts`-style utility (see that
+   * file, added by this ticket) -- neither exists yet.
+   */
+  [UserRole.PATIENT]: [],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
