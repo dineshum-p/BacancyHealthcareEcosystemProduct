@@ -45,12 +45,28 @@ function isTableAlreadyExistsError(error: unknown): boolean {
  * variable-length list of structured entries, mirroring this service's own
  * BAC-10 `patients.resource` JSONB-document convention for that shape of
  * data.
+ *
+ * Also provisions `<schema>.patient_profiles` (`ensurePatientProfilesTable`,
+ * BAC-44): the patient's one-time, editable-anytime baseline clinical
+ * profile (allergies/chronic conditions/long-term medications), distinct
+ * from `encounters`' append-only, per-visit history. `allergies`/
+ * `chronic_conditions` are `BYTEA` -- encrypted at the COLUMN level via
+ * Postgres's `pgcrypto` extension (`pgp_sym_encrypt`/`pgp_sym_decrypt`, see
+ * `PatientProfileRepository`) -- the first use of column-level PHI
+ * encryption in this service; a later ticket (BAC-45) is expected to
+ * replicate this exact pattern for its own PHI fields. `medications` is
+ * plain JSONB (not pgcrypto-encrypted): only `allergies`/`chronic_conditions`
+ * are in this ticket's explicit encryption scope. `patient_id` carries a
+ * UNIQUE constraint -- exactly one profile row per patient, enforcing the
+ * "baseline, not versioned" data model at the schema level, not just in
+ * application code.
  */
 @Injectable()
 export class EmrSchemaProvisioner {
   private readonly provisionedPatientsSchemas = new Set<string>();
   private readonly provisionedAuditLogsSchemas = new Set<string>();
   private readonly provisionedEncountersSchemas = new Set<string>();
+  private readonly provisionedPatientProfilesSchemas = new Set<string>();
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
@@ -154,5 +170,45 @@ export class EmrSchemaProvisioner {
     }
 
     this.provisionedEncountersSchemas.add(schemaName);
+  }
+
+  /**
+   * Idempotently ensures the `pgcrypto` extension is installed AND
+   * `<schema>.patient_profiles` exists (BAC-44). `CREATE EXTENSION IF NOT
+   * EXISTS pgcrypto` is itself idempotent (Postgres extensions are
+   * database-scoped, not schema-scoped -- installing it once makes
+   * `pgp_sym_encrypt`/`pgp_sym_decrypt` available to every schema in this
+   * database via the default `search_path`, which always includes
+   * `public`), so running it again per-tenant is cheap and safe; this
+   * method still caches per-schema like every other `ensure*Table` here so
+   * the table-creation half of this method only ever runs once per schema.
+   */
+  async ensurePatientProfilesTable(schemaName: string): Promise<void> {
+    if (this.provisionedPatientProfilesSchemas.has(schemaName)) {
+      return;
+    }
+    const schema = quoteSchemaIdentifier(schemaName);
+
+    await this.pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+
+    try {
+      await this.pool.query(`
+        CREATE TABLE ${schema}.patient_profiles (
+          id UUID PRIMARY KEY,
+          patient_id UUID NOT NULL UNIQUE,
+          allergies BYTEA NOT NULL,
+          chronic_conditions BYTEA NOT NULL,
+          medications JSONB NOT NULL DEFAULT '[]',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+    } catch (error) {
+      if (!isTableAlreadyExistsError(error)) {
+        throw error;
+      }
+    }
+
+    this.provisionedPatientProfilesSchemas.add(schemaName);
   }
 }

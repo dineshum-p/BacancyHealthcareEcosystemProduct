@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, QueryResult } from 'pg';
 import { EmrSchemaProvisioner } from './emr-schema.provisioner';
 import { createInMemoryPool } from '../../test/support/create-in-memory-pool';
 
@@ -90,6 +90,65 @@ describe('EmrSchemaProvisioner', () => {
     it('rejects unsafe schema names', async () => {
       await expect(
         provisioner.ensureEncountersTable('bad; drop table x;'),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('ensurePatientProfilesTable', () => {
+    it('installs pgcrypto and creates a patient_profiles table with encrypted allergy/chronic-condition columns', async () => {
+      await provisioner.ensurePatientProfilesTable('tenant_acme');
+
+      await pool.query(
+        `INSERT INTO "tenant_acme".patient_profiles
+           (id, patient_id, allergies, chronic_conditions, medications)
+         VALUES ($1, $2, pgp_sym_encrypt($3, $5), pgp_sym_encrypt($4, $5), $6)`,
+        [
+          '11111111-1111-1111-1111-111111111111',
+          '22222222-2222-2222-2222-222222222222',
+          JSON.stringify([{ substance: 'Penicillin', severity: 'severe' }]),
+          JSON.stringify([{ name: 'Asthma' }]),
+          'test-key',
+          JSON.stringify([{ name: 'Albuterol' }]),
+        ],
+      );
+
+      const raw: QueryResult<{ allergies: Buffer; medications: unknown }> =
+        await pool.query(
+          'SELECT allergies, medications FROM "tenant_acme".patient_profiles',
+        );
+      expect(Buffer.isBuffer(raw.rows[0].allergies)).toBe(true);
+      expect(raw.rows[0].allergies.toString('latin1')).not.toContain(
+        'Penicillin',
+      );
+      expect(raw.rows[0].medications).toEqual([{ name: 'Albuterol' }]);
+
+      const decrypted: QueryResult<{
+        allergies_json: string;
+        chronic_conditions_json: string;
+      }> = await pool.query(
+        `SELECT pgp_sym_decrypt(allergies, $1) AS allergies_json,
+                pgp_sym_decrypt(chronic_conditions, $1) AS chronic_conditions_json
+         FROM "tenant_acme".patient_profiles`,
+        ['test-key'],
+      );
+      expect(JSON.parse(decrypted.rows[0].allergies_json)).toEqual([
+        { substance: 'Penicillin', severity: 'severe' },
+      ]);
+      expect(JSON.parse(decrypted.rows[0].chronic_conditions_json)).toEqual([
+        { name: 'Asthma' },
+      ]);
+    });
+
+    it('is idempotent when called twice for the same schema', async () => {
+      await provisioner.ensurePatientProfilesTable('tenant_acme');
+      await expect(
+        provisioner.ensurePatientProfilesTable('tenant_acme'),
+      ).resolves.not.toThrow();
+    });
+
+    it('rejects unsafe schema names', async () => {
+      await expect(
+        provisioner.ensurePatientProfilesTable('bad; drop table x;'),
       ).rejects.toThrow();
     });
   });
