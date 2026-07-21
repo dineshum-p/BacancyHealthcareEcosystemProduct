@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AuthTokens, MfaChallenge, RegisteredUser } from "@hep/shared-types";
+import type { AuthTokens, RegisteredUser } from "@hep/shared-types";
 import { getStoredAccessToken, getStoredRefreshToken } from "@/src/lib/auth/session";
 import * as useLoginModule from "@/src/features/login/hooks/useLogin";
 import * as useSignUpPatientModule from "./hooks/useSignUpPatient";

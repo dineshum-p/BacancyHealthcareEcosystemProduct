@@ -279,5 +279,45 @@ describe("LoginPage", () => {
 
       expect(screen.getByLabelText(/workspace/i)).toHaveValue("acme-clinic");
     });
+
+    it("offers a Sign up link to patient registration (BAC-43)", () => {
+      mockUseLogin({});
+      mockUseVerifyMfaLogin({});
+
+      render(<LoginPage />);
+
+      expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute(
+        "href",
+        "/signup",
+      );
+    });
+
+    it("hides the Sign up link during the MFA challenge step (BAC-43)", async () => {
+      const user = userEvent.setup();
+      const challenge: MfaChallenge = {
+        mfaRequired: true,
+        mfaChallengeToken: "challenge-token",
+      };
+      const mutate = vi.fn(
+        (
+          _input: unknown,
+          options?: { onSuccess?: (result: MfaChallenge) => void },
+        ) => {
+          options?.onSuccess?.(challenge);
+        },
+      );
+      mockUseLogin({ mutate });
+      mockUseVerifyMfaLogin({});
+
+      render(<LoginPage />);
+      await fillAndSubmitLogin(user);
+
+      expect(
+        await screen.findByLabelText(/authentication code/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: /sign up/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
