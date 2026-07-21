@@ -28,4 +28,17 @@ export interface User {
    * rejected even if otherwise valid.
    */
   mfaLastUsedStep: number | null;
+  /**
+   * BAC-42: minimal identity fields collected at patient sign-up
+   * (`POST /auth/patients/register`). `null` for every OTHER registration
+   * path (`register()`/`seedClinicAdmin()`), which never collect a name or
+   * date of birth -- these columns exist on the shared `users` table (not a
+   * separate `patient_profiles` table) purely to avoid a second table for
+   * three optional fields; `role !== 'patient'` rows simply never populate
+   * them.
+   */
+  firstName: string | null;
+  lastName: string | null;
+  /** ISO-8601 date (`YYYY-MM-DD`), or `null` -- see `firstName`'s doc comment. */
+  dateOfBirth: string | null;
 }

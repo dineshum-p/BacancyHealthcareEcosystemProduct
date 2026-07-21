@@ -730,6 +730,34 @@ export interface PricingQuote {
 export type SelfRegisterPatientRequest = RegisterPatientRequest;
 
 /**
+ * `services/auth` (BAC-42). Request body for the PUBLIC, unauthenticated
+ * `POST /auth/patients/register` endpoint: a patient creating a real,
+ * login-capable account (`role: 'patient'`), distinct from BAC-36's
+ * `SelfRegisterPatientRequest` (which creates no login account at all -- just
+ * a staff-reviewed clinical intake record with no credentials). Deliberately
+ * NOT a plain alias of either existing request shape, unlike
+ * `SelfRegisterPatientRequest`'s alias of `RegisterPatientRequest`: this
+ * combines `RegisterDto`'s credentials (`email`/`password`) with a MINIMAL
+ * identity subset of `RegisterPatientRequest`'s demographics (`firstName`/
+ * `lastName`/`dateOfBirth` only -- no `gender`/`phone`, which are not needed
+ * to stand up a login account and stay out of this ticket's scope), so
+ * neither existing type's shape actually matches this endpoint's body.
+ *
+ * This creates ONLY an auth-service user scoped `role: 'patient'` -- it does
+ * NOT create a clinical/EMR patient record; reconciling an authenticated
+ * patient identity with a `services/patient` record (if ever needed) is
+ * explicitly out of this ticket's scope, left to a later ticket.
+ */
+export interface PatientSignUpRequest {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`), no time component. */
+  dateOfBirth: string;
+}
+
+/**
  * Lifecycle of a self-submitted registration (BAC-36): `pending` immediately
  * after submission (not yet searchable/trusted); `approved` once staff
  * confirm it as a genuinely new patient (a real `patients` row -- with an

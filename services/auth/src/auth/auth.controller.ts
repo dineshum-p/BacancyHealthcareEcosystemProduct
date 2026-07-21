@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type {
   AccessTokenResponse,
   AuthTokens,
@@ -27,6 +28,7 @@ import { RequirePermissions } from './permissions.decorator';
 import { Permission } from './permission.enum';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { PatientSignUpDto } from './dto/patient-sign-up.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
@@ -56,6 +58,29 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterDto): Promise<RegisteredUser> {
     return this.authService.register(dto);
+  }
+
+  /**
+   * BAC-42: the PUBLIC, unauthenticated patient sign-up endpoint -- creates a
+   * real, login-capable auth-service user (`role: 'patient'`), distinct from
+   * BAC-36's anonymous `services/patient` self-registration (which creates no
+   * login account at all). Guarded by the class-level `TenantGuard` (same
+   * tenant-scoping convention as every other route in this controller,
+   * resolved from `X-Tenant-Id` -- there is no `:tenantSlug` route param here,
+   * unlike `services/patient`'s public controller) plus a route-level
+   * `ThrottlerGuard` (BAC-36's rate-limiting convention, replicated here via
+   * `getPatientSignUpThrottleConfig`/`AuthModule`'s `ThrottlerModule.
+   * forRootAsync`) -- NOT `AccessTokenGuard`: a caller signing up has no
+   * session/JWT yet, by definition. See `AuthService.registerPatient`'s doc
+   * comment for why this is a distinct method from `register()`, and for why
+   * it does NOT auto-issue tokens (matches `register()`'s existing
+   * behaviour: the caller still calls `POST /auth/login` afterwards).
+   */
+  @Post('patients/register')
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(HttpStatus.CREATED)
+  registerPatient(@Body() dto: PatientSignUpDto): Promise<RegisteredUser> {
+    return this.authService.registerPatient(dto);
   }
 
   @Post('login')
