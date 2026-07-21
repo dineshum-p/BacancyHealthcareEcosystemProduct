@@ -27,8 +27,10 @@ This directory is intentionally empty, for the same reason `services/auth`'s,
   `pgp_sym_decrypt`), replicating `services/emr`'s BAC-44
   `EmrSchemaProvisioner.ensurePatientProfilesTable`/`PatientProfileRepository`
   pattern exactly (see `src/visit-intakes/visit-intakes.repository.ts`'s doc
-  comment) -- this service has its own `PGCRYPTO_COLUMN_KEY`-sourced
-  `src/config/pgcrypto.config.ts`, independent of `services/emr`'s.
+  comment) -- this service has its own `SCHEDULING_PGCRYPTO_COLUMN_KEY`-sourced
+  `src/config/pgcrypto.config.ts`, independent of `services/emr`'s (a
+  deliberately service-specific env var name -- see that config file's doc
+  comment).
 
 The `migrate:up` / `migrate:down` npm scripts and `node-pg-migrate`
 devDependency are kept for scaffold consistency with the other services, and

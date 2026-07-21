@@ -36,7 +36,7 @@ describe('Visit intakes (e2e, BAC-45)', () => {
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET = JWT_ACCESS_SECRET;
-    process.env.PGCRYPTO_COLUMN_KEY = 'e2e-visit-intake-column-key';
+    process.env.SCHEDULING_PGCRYPTO_COLUMN_KEY = 'e2e-visit-intake-column-key';
 
     pool = createInMemoryPool();
     await createTenantsTable(pool);
@@ -443,6 +443,113 @@ describe('Visit intakes (e2e, BAC-45)', () => {
         .set('Authorization', `Bearer ${staffToken}`)
         .send({ providerId: 'a-provider-who-did-not-book-this', appointmentId })
         .expect(400);
+    });
+
+    it('rejects linking to a CANCELLED appointment with 400, even when the providerId matches (BLOCKER regression)', async () => {
+      const patientToken = tokenFor(
+        tenants.tenantA,
+        'patient',
+        'patient-cancelled-appt',
+      );
+      const created = await request(app.getHttpServer())
+        .post('/visit-intakes')
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${patientToken}`)
+        .send(intakePayload())
+        .expect(201);
+      const intakeId = (created.body as VisitIntakeSummary).id;
+
+      const appointmentId = await bookAppointment(
+        tenants.tenantA,
+        'provider-cancelled',
+        'patient-cancelled-appt',
+        '2026-07-20T13:00:00.000Z',
+        '2026-07-20T13:30:00.000Z',
+      );
+
+      const staffToken = tokenFor(tenants.tenantA, 'clinic_admin', 'admin-1');
+      await request(app.getHttpServer())
+        .patch(`/appointments/${appointmentId}`)
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ action: 'cancel' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`/visit-intakes/${intakeId}/link`)
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ providerId: 'provider-cancelled', appointmentId })
+        .expect(400);
+    });
+
+    it('regression (BLOCKER): two concurrent link requests on the same pending intake -- exactly one succeeds (200), the other gets a clean 409 (never a silent overwrite)', async () => {
+      const patientToken = tokenFor(tenants.tenantA, 'patient', 'patient-race');
+      const created = await request(app.getHttpServer())
+        .post('/visit-intakes')
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${patientToken}`)
+        .send(intakePayload())
+        .expect(201);
+      const intakeId = (created.body as VisitIntakeSummary).id;
+
+      const appointmentIdA = await bookAppointment(
+        tenants.tenantA,
+        'provider-race-a',
+        'patient-race',
+        '2026-07-21T09:00:00.000Z',
+        '2026-07-21T09:30:00.000Z',
+      );
+      const appointmentIdB = await bookAppointment(
+        tenants.tenantA,
+        'provider-race-b',
+        'patient-race',
+        '2026-07-21T10:00:00.000Z',
+        '2026-07-21T10:30:00.000Z',
+      );
+
+      const staffToken = tokenFor(
+        tenants.tenantA,
+        'clinic_admin',
+        'admin-race',
+      );
+
+      const [responseA, responseB] = await Promise.all([
+        request(app.getHttpServer())
+          .patch(`/visit-intakes/${intakeId}/link`)
+          .set('X-Tenant-Id', tenants.tenantA.slug)
+          .set('Authorization', `Bearer ${staffToken}`)
+          .send({
+            providerId: 'provider-race-a',
+            appointmentId: appointmentIdA,
+          }),
+        request(app.getHttpServer())
+          .patch(`/visit-intakes/${intakeId}/link`)
+          .set('X-Tenant-Id', tenants.tenantA.slug)
+          .set('Authorization', `Bearer ${staffToken}`)
+          .send({
+            providerId: 'provider-race-b',
+            appointmentId: appointmentIdB,
+          }),
+      ]);
+
+      const statuses = [responseA.status, responseB.status].sort();
+      expect(statuses).toEqual([200, 409]);
+
+      const winnerResponse = responseA.status === 200 ? responseA : responseB;
+      const winnerBody = winnerResponse.body as VisitIntakeSummary;
+
+      const readBack = await request(app.getHttpServer())
+        .get(`/visit-intakes/${intakeId}`)
+        .set('X-Tenant-Id', tenants.tenantA.slug)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+      const persisted = readBack.body as VisitIntakeSummary;
+
+      // The persisted state matches EXACTLY the winning request -- never a
+      // mix of both racing providerId/appointmentId pairs.
+      expect(persisted.assignedProviderId).toBe(winnerBody.assignedProviderId);
+      expect(persisted.appointmentId).toBe(winnerBody.appointmentId);
     });
 
     it('forbids a provider (non-staff) from calling the link mutation', async () => {

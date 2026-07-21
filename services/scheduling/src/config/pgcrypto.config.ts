@@ -49,20 +49,26 @@ function assertSecretConfiguredOutsideDevTest(
 
 /**
  * Reads BAC-45's PHI column-encryption key from the environment, mirroring
- * `services/emr`'s BAC-44 `getPgcryptoConfig` exactly. Falls back to a
- * dev-only placeholder so the service still boots for local/test use without
- * a `.env` file; `.env.example` documents that real deployments MUST
- * override it with a strong random value, and that rotating it makes every
- * previously-encrypted `reason_for_visit`/`symptoms`/
- * `whats_new_since_last_visit` value undecryptable (there is no
+ * `services/emr`'s BAC-44 `getPgcryptoConfig` in SHAPE only. The env var name
+ * -- `SCHEDULING_PGCRYPTO_COLUMN_KEY` -- is deliberately service-specific
+ * (NOT the bare `PGCRYPTO_COLUMN_KEY` `services/emr` reads): these are two
+ * independently deployable services encrypting different PHI datasets, and
+ * sharing a variable name would be an operational hazard for any
+ * secrets-manager/CI setup that scopes secrets by variable name across
+ * services, plus it would needlessly couple the two services' key-rotation
+ * lifecycles. Falls back to a dev-only placeholder so the service still
+ * boots for local/test use without a `.env` file; `.env.example` documents
+ * that real deployments MUST override it with a strong random value, and
+ * that rotating it makes every previously-encrypted `reason_for_visit`/
+ * `symptoms`/`whats_new_since_last_visit` value undecryptable (there is no
  * key-rotation/re-encryption tooling in this ticket's scope).
  */
 export function getPgcryptoConfig(): PgcryptoConfig {
   const nodeEnv = process.env.NODE_ENV;
-  const key = process.env.PGCRYPTO_COLUMN_KEY;
+  const key = process.env.SCHEDULING_PGCRYPTO_COLUMN_KEY;
 
   assertSecretConfiguredOutsideDevTest(
-    'PGCRYPTO_COLUMN_KEY',
+    'SCHEDULING_PGCRYPTO_COLUMN_KEY',
     key,
     DEV_INSECURE_COLUMN_ENCRYPTION_KEY,
     nodeEnv,

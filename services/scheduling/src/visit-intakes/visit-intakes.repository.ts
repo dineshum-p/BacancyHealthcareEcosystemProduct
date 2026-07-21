@@ -133,7 +133,20 @@ export class VisitIntakesRepository {
     return result.rows.map((row) => this.toEntity(row));
   }
 
-  /** AC3: associates a specific provider + BAC-16/21 appointment with a pending intake, transitioning it to `linked`. */
+  /**
+   * AC3: associates a specific provider + BAC-16/21 appointment with a
+   * pending intake, transitioning it to `linked`.
+   *
+   * `WHERE id = $2 AND status = 'pending'` is a deliberate atomic
+   * check-and-set at the DB level (mirrors `AppointmentsRepository.cancel`/
+   * `updateTimes`'s own `WHERE ... AND status = 'booked'` guard): two
+   * concurrent calls racing to link the SAME pending intake can no longer
+   * both succeed -- whichever `UPDATE` commits first flips `status` to
+   * `linked`, so the loser's `WHERE` clause matches zero rows and this
+   * returns `null`, letting `VisitIntakesService.link` raise a genuine 409
+   * instead of silently overwriting the winner's provider/appointment pair
+   * (last-write-wins).
+   */
   async link(
     schemaName: string,
     id: string,
@@ -148,7 +161,7 @@ export class VisitIntakesRepository {
            appointment_id = $4,
            status = $5,
            updated_at = now()
-       WHERE id = $2
+       WHERE id = $2 AND status = '${VisitIntakeStatusEnum.PENDING}'
        RETURNING ${DECRYPTED_PROJECTION}`,
       [
         key,

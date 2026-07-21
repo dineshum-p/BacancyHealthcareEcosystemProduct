@@ -14,7 +14,7 @@ describe('VisitIntakesRepository', () => {
   let repository: VisitIntakesRepository;
 
   beforeEach(async () => {
-    process.env.PGCRYPTO_COLUMN_KEY = 'e2e-test-column-key';
+    process.env.SCHEDULING_PGCRYPTO_COLUMN_KEY = 'e2e-test-column-key';
     pool = createInMemoryPool();
     await pool.query(`CREATE SCHEMA ${quoteSchemaIdentifier(SCHEMA)}`);
     await new VisitIntakeSchemaProvisioner(pool).ensureVisitIntakesTable(
@@ -176,6 +176,64 @@ describe('VisitIntakesRepository', () => {
         appointmentId: 'appt-1',
       });
       expect(linked).toBeNull();
+    });
+
+    it('returns null (never updates) for an intake that is no longer pending -- atomic check-and-set at the DB level', async () => {
+      const created = await repository.insert(SCHEMA, {
+        patientId: PATIENT_ID,
+        reasonForVisit: 'Reason',
+        symptoms: 'Symptoms',
+        whatsNewSinceLastVisit: '',
+      });
+      await repository.link(SCHEMA, created.id, {
+        assignedProviderId: 'provider-1',
+        appointmentId: 'appt-1',
+      });
+
+      const secondAttempt = await repository.link(SCHEMA, created.id, {
+        assignedProviderId: 'provider-2',
+        appointmentId: 'appt-2',
+      });
+
+      expect(secondAttempt).toBeNull();
+      const final = await repository.findById(SCHEMA, created.id);
+      expect(final?.assignedProviderId).toBe('provider-1');
+      expect(final?.appointmentId).toBe('appt-1');
+    });
+
+    it('regression (BLOCKER): two concurrent link() calls on the same pending intake -- exactly one wins (non-null), the other returns null (no silent overwrite, no crash)', async () => {
+      const created = await repository.insert(SCHEMA, {
+        patientId: PATIENT_ID,
+        reasonForVisit: 'Reason',
+        symptoms: 'Symptoms',
+        whatsNewSinceLastVisit: '',
+      });
+
+      const [first, second] = await Promise.all([
+        repository.link(SCHEMA, created.id, {
+          assignedProviderId: 'provider-first',
+          appointmentId: 'appt-first',
+        }),
+        repository.link(SCHEMA, created.id, {
+          assignedProviderId: 'provider-second',
+          appointmentId: 'appt-second',
+        }),
+      ]);
+
+      const results = [first, second];
+      const winners = results.filter(
+        (result): result is NonNullable<typeof result> => result !== null,
+      );
+      const losers = results.filter((result) => result === null);
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+
+      // The persisted row reflects EXACTLY the winner -- never a mix of
+      // both racing calls' provider/appointment pairs.
+      const final = await repository.findById(SCHEMA, created.id);
+      expect(final?.status).toBe(VisitIntakeStatus.LINKED);
+      expect(final?.assignedProviderId).toBe(winners[0].assignedProviderId);
+      expect(final?.appointmentId).toBe(winners[0].appointmentId);
     });
   });
 

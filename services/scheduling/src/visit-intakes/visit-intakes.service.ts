@@ -15,6 +15,7 @@ import { LinkVisitIntakeDto } from './dto/link-visit-intake.dto';
 import { assertVisitIntakeReadScope } from './visit-intake-scope.util';
 import { AppointmentsRepository } from '../appointments/appointments.repository';
 import { AppointmentSchemaProvisioner } from '../appointments/appointment-schema.provisioner';
+import { AppointmentStatus } from '../appointments/appointment-status.enum';
 
 /**
  * Core visit-intake logic (BAC-45), deliberately schema-explicit (see
@@ -118,11 +119,13 @@ export class VisitIntakesService {
   /**
    * AC3: staff link a specific provider + the BAC-16/21 appointment they
    * just booked to a pending intake. Verifies `appointmentId` refers to a
-   * real, existing appointment booked with `providerId` -- a mismatch (or an
-   * unknown appointment) is rejected rather than silently trusting the
-   * caller-supplied pairing. Only ever reachable by a staff-side role
-   * (`LINK_VISIT_INTAKE` permission); not itself instance-scoped (staff may
-   * link any tenant-wide intake, same as the triage queue).
+   * real, existing appointment that is BOTH booked with `providerId` AND
+   * still `AppointmentStatus.BOOKED` (not `CANCELLED`) -- a provider
+   * mismatch, an unknown appointment, or a cancelled one is rejected rather
+   * than silently trusting the caller-supplied pairing. Only ever reachable
+   * by a staff-side role (`LINK_VISIT_INTAKE` permission); not itself
+   * instance-scoped (staff may link any tenant-wide intake, same as the
+   * triage queue).
    */
   async link(
     tenantId: string,
@@ -155,6 +158,11 @@ export class VisitIntakesService {
     if (appointment.providerId !== dto.providerId) {
       throw new BadRequestException(
         `Appointment "${dto.appointmentId}" is not booked with provider "${dto.providerId}".`,
+      );
+    }
+    if (appointment.status !== AppointmentStatus.BOOKED) {
+      throw new BadRequestException(
+        `Appointment "${dto.appointmentId}" is not booked (status: "${appointment.status}").`,
       );
     }
 

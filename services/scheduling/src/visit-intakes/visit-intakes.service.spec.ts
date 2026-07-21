@@ -338,6 +338,26 @@ describe('VisitIntakesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('throws 400 when the appointment matches the providerId but is CANCELLED, not booked (BLOCKER regression)', async () => {
+      repository.findById.mockResolvedValue(record());
+      appointmentsRepository.findById.mockResolvedValue(
+        appointment({
+          providerId: 'provider-1',
+          status: AppointmentStatus.CANCELLED,
+        }),
+      );
+
+      await expect(
+        service.link(TENANT_ID, SCHEMA, 'intake-1', {
+          providerId: 'provider-1',
+          appointmentId: 'appt-1',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(repository.link).not.toHaveBeenCalled();
+    });
+
     it('links the intake to the provider/appointment, transitioning to linked', async () => {
       repository.findById.mockResolvedValue(record());
       appointmentsRepository.findById.mockResolvedValue(appointment());
