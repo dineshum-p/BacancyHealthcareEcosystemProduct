@@ -52,6 +52,15 @@ function toIsoDateTime(date: string, time: string): string {
 export interface AppointmentBookingFormProps {
   /** Set for a `provider` caller (their own id) -- hides the Provider ID field entirely (BAC-21 RBAC). Omitted for `clinic_admin`/`staff`, who must supply one. */
   fixedProviderId?: string;
+  /**
+   * BAC-47: the visit-intake queue's "Book appointment" link pre-fills
+   * these two (via `/appointments?patientId=...&patientName=...`) so staff
+   * land here with the right patient already found/selected, rather than
+   * having to search again for someone they just reviewed in the queue.
+   * Forwarded straight through to `PatientLookup`.
+   */
+  preselectedPatientId?: string;
+  preselectedPatientName?: string;
   onSubmit: (input: CreateAppointmentRequest) => void;
   isSubmitting: boolean;
 }
@@ -59,6 +68,8 @@ export interface AppointmentBookingFormProps {
 /** BAC-21, AC1: books a slot for a patient with a provider on a chosen date/time. */
 export function AppointmentBookingForm({
   fixedProviderId,
+  preselectedPatientId,
+  preselectedPatientName,
   onSubmit,
   isSubmitting,
 }: AppointmentBookingFormProps) {
@@ -107,7 +118,11 @@ export function AppointmentBookingForm({
         <p className="text-sm text-muted-foreground">
           Find the patient this appointment is for.
         </p>
-        <PatientLookup onSelect={handleSelectPatient} />
+        <PatientLookup
+          onSelect={handleSelectPatient}
+          initialName={preselectedPatientName}
+          initialPatientId={preselectedPatientId}
+        />
       </div>
     );
   }

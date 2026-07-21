@@ -213,4 +213,26 @@ describe("AppointmentBookingForm (AC1)", () => {
       screen.getByRole("button", { name: /book appointment/i }),
     ).toBeDisabled();
   });
+
+  it("auto-selects the patient pre-filled from the visit-intake queue's 'Book appointment' link (BAC-47)", async () => {
+    vi.spyOn(patientsApi, "searchPatients").mockResolvedValue({
+      items: [PATIENT_WITH_BOTH],
+      page: 1,
+      limit: 20,
+      total: 1,
+    });
+
+    renderWithClient(
+      <AppointmentBookingForm
+        fixedProviderId="provider-1"
+        preselectedPatientId="patient-1"
+        preselectedPatientName="Jane Doe"
+        onSubmit={vi.fn()}
+        isSubmitting={false}
+      />,
+    );
+
+    expect(await screen.findByLabelText(/start time/i)).toBeInTheDocument();
+    expect(screen.getByText(/Doe, Jane/)).toBeInTheDocument();
+  });
 });

@@ -16,13 +16,18 @@ function fakeJwt(payload: object): string {
   return `${base64url({ alg: "HS256" })}.${base64url(payload)}.sig`;
 }
 
-function renderPage() {
+function renderPage(
+  props: {
+    preselectedPatientId?: string;
+    preselectedPatientName?: string;
+  } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <SchedulePage />
+      <SchedulePage {...props} />
     </QueryClientProvider>,
   );
 }
@@ -300,6 +305,39 @@ describe("SchedulePage", () => {
           endTime: "2026-07-20T15:30:00.000Z",
         },
       });
+    });
+  });
+
+  describe("pre-filled from the visit-intake queue (BAC-47)", () => {
+    it("forwards preselectedPatientId/preselectedPatientName into the booking form", async () => {
+      setStoredAccessToken(
+        fakeJwt({ userId: "provider-1", tenantId: "t1", role: "provider" }),
+      );
+      mockUseDaySchedule({ data: [] });
+      mockUseBookAppointment({});
+      mockUseUpdateAppointment();
+      vi.spyOn(patientsApi, "searchPatients").mockResolvedValue({
+        items: [PATIENT],
+        page: 1,
+        limit: 20,
+        total: 1,
+      });
+
+      renderPage({
+        preselectedPatientId: "patient-1",
+        preselectedPatientName: "Jane Doe",
+      });
+
+      // Auto-SELECTED (not just listed as a search result): the booking
+      // fields are already showing and there's a "Change patient" escape
+      // hatch, exactly as if the caller had clicked "Select" themselves.
+      expect(await screen.findByLabelText(/start time/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /change patient/i }),
+      ).toBeInTheDocument();
+      expect(patientsApi.searchPatients).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Jane Doe" }),
+      );
     });
   });
 });

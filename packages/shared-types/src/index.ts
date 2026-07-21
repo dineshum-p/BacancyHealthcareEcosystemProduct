@@ -59,7 +59,11 @@ export type Permission =
   | 'read_appointments'
   | 'manage_appointments'
   | 'read_patient_profile'
-  | 'write_patient_profile';
+  | 'write_patient_profile'
+  | 'create_visit_intake'
+  | 'read_visit_intake_queue'
+  | 'read_visit_intake'
+  | 'link_visit_intake';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
