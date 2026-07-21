@@ -1012,3 +1012,74 @@ export interface UpdateAppointmentRequest {
   /** ISO-8601 date-time; required when `action` is `'reschedule'`. */
   endTime?: string;
 }
+
+/**
+ * Lifecycle of a BAC-45 visit intake: `pending` from creation until staff
+ * link a specific provider + BAC-16/21 appointment to it (`linked`). Distinct
+ * from `AppointmentStatus` -- an intake and the appointment it eventually
+ * gets linked to are separate resources with separate lifecycles.
+ */
+export type VisitIntakeStatus = 'pending' | 'linked';
+
+/**
+ * Request body for `POST /visit-intakes` (BAC-45): a patient's own,
+ * self-submitted intake ahead of a visit -- reason for visit, current
+ * symptoms, and anything new/changed since their last visit.
+ * `whatsNewSinceLastVisit` is optional (defaults to an empty string server
+ * side). Every submission creates a brand-new, standalone record ("fresh at
+ * every booking") -- this is genuinely distinct from BAC-44's one-time,
+ * edited-in-place baseline `PatientProfileResponse`, never merged into it.
+ * Not yet linked to any specific booked appointment slot; see
+ * `LinkVisitIntakeRequest` for how staff associate one later.
+ */
+export interface CreateVisitIntakeRequest {
+  reasonForVisit: string;
+  symptoms: string;
+  /** Optional: anything new/changed since the patient's last visit. */
+  whatsNewSinceLastVisit?: string;
+}
+
+/**
+ * A visit intake as returned by every `services/scheduling` visit-intake
+ * endpoint (BAC-45). `reasonForVisit`/`symptoms`/`whatsNewSinceLastVisit` are
+ * pgcrypto column-encrypted at rest (`VisitIntakesRepository`, mirroring
+ * BAC-44's `PatientProfileRepository` pattern) but always decrypted back to
+ * plaintext by the time they reach this shape.
+ */
+export interface VisitIntakeSummary {
+  id: string;
+  tenantId: string;
+  patientId: string;
+  reasonForVisit: string;
+  symptoms: string;
+  whatsNewSinceLastVisit: string;
+  status: VisitIntakeStatus;
+  /** Set once staff link a specific provider to this intake (`PATCH /visit-intakes/:id/link`); `null` until then. */
+  assignedProviderId: string | null;
+  /** Set alongside `assignedProviderId`: the BAC-16/21 appointment this intake is now tied to. */
+  appointmentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `GET /visit-intakes` query params (BAC-45, AC2): the staff-facing
+ * pending-review triage queue (`?status=pending`), or any other single
+ * lifecycle state. Optional -- omitting it lists every intake tenant-wide,
+ * regardless of status.
+ */
+export interface VisitIntakeQuery {
+  status?: VisitIntakeStatus;
+}
+
+/**
+ * Request body for `PATCH /visit-intakes/:id/link` (BAC-45, AC3): staff
+ * associate a specific provider + the BAC-16/21 appointment they just booked
+ * with a pending intake. From this point on, ONLY that provider (not any
+ * other) may read this intake as a `provider` caller -- see
+ * `services/scheduling`'s `visit-intake-scope.util.ts`.
+ */
+export interface LinkVisitIntakeRequest {
+  providerId: string;
+  appointmentId: string;
+}

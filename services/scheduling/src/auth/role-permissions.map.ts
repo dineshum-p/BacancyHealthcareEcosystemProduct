@@ -18,28 +18,48 @@ export const ROLE_PERMISSIONS: Readonly<
   [UserRole.SUPER_ADMIN]: [
     Permission.MANAGE_APPOINTMENTS,
     Permission.READ_APPOINTMENTS,
+    Permission.READ_VISIT_INTAKE_QUEUE,
+    Permission.READ_VISIT_INTAKE,
+    Permission.LINK_VISIT_INTAKE,
   ],
   [UserRole.CLINIC_ADMIN]: [
     Permission.MANAGE_APPOINTMENTS,
     Permission.READ_APPOINTMENTS,
+    Permission.READ_VISIT_INTAKE_QUEUE,
+    Permission.READ_VISIT_INTAKE,
+    Permission.LINK_VISIT_INTAKE,
   ],
   [UserRole.PROVIDER]: [
     Permission.MANAGE_APPOINTMENTS,
     Permission.READ_APPOINTMENTS,
+    /**
+     * BAC-45: a `provider` may read a SINGLE visit intake (the one they are
+     * specifically assigned to -- see `visit-intake-scope.util.ts`), never
+     * the tenant-wide triage queue (`READ_VISIT_INTAKE_QUEUE`, staff-side
+     * only) and never the `link` mutation (`LINK_VISIT_INTAKE`,
+     * staff-side only).
+     */
+    Permission.READ_VISIT_INTAKE,
   ],
   [UserRole.STAFF]: [
     Permission.MANAGE_APPOINTMENTS,
     Permission.READ_APPOINTMENTS,
+    Permission.READ_VISIT_INTAKE_QUEUE,
+    Permission.READ_VISIT_INTAKE,
+    Permission.LINK_VISIT_INTAKE,
   ],
   /**
-   * `PATIENT` (BAC-41) is deliberately granted NEITHER permission above --
-   * default-deny, not silent inheritance of a staff-side permission set.
-   * This ticket only adds the role and lays the `patient-scope.util.ts`
-   * foundation a later ticket (e.g. BAC-45) would consume to grant a
-   * NARROW, self-scoped version of these permissions (e.g. "read/manage
-   * only MY OWN appointments").
+   * `PATIENT` (BAC-41) is granted NEITHER `MANAGE_APPOINTMENTS` nor
+   * `READ_APPOINTMENTS` -- default-deny for this ticket's pre-existing
+   * scope, unchanged by BAC-45. BAC-45 grants a NARROW, self-scoped pair:
+   * `CREATE_VISIT_INTAKE` (submit their own intake) and `READ_VISIT_INTAKE`
+   * (read only their OWN intake, never the tenant-wide queue or another
+   * patient's -- enforced by `assertVisitIntakeReadScope`).
    */
-  [UserRole.PATIENT]: [],
+  [UserRole.PATIENT]: [
+    Permission.CREATE_VISIT_INTAKE,
+    Permission.READ_VISIT_INTAKE,
+  ],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {

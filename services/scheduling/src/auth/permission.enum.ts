@@ -22,4 +22,32 @@ export enum Permission {
   MANAGE_APPOINTMENTS = 'manage_appointments',
   /** Grants access to `GET /appointments` (BAC-16). */
   READ_APPOINTMENTS = 'read_appointments',
+  /**
+   * Grants access to `POST /visit-intakes` (BAC-45). Role-level only:
+   * `patientId` is always the caller's own `userId` (self-scoped in
+   * `VisitIntakesService.create`), so no separate instance-level check
+   * applies to creation itself.
+   */
+  CREATE_VISIT_INTAKE = 'create_visit_intake',
+  /**
+   * Grants access to `GET /visit-intakes` (BAC-45, AC2): the staff-facing,
+   * tenant-wide pending-review triage queue. Deliberately a SEPARATE
+   * permission from `READ_VISIT_INTAKE` below -- granted only to staff-side
+   * roles, never to `patient`/`provider` (who may each only ever read a
+   * single, specific intake -- see `visit-intake-scope.util.ts`).
+   */
+  READ_VISIT_INTAKE_QUEUE = 'read_visit_intake_queue',
+  /**
+   * Grants access to `GET /visit-intakes/:id` (BAC-45, AC3) at the
+   * ROLE level only -- WHICH specific intake a `patient`/`provider` caller
+   * may actually read is an INSTANCE-level (resource-ownership) rule this
+   * permission cannot express, enforced separately by
+   * `assertVisitIntakeReadScope` (`visit-intake-scope.util.ts`) inside
+   * `VisitIntakesService.findById`. Every staff-side role also holds this
+   * (in addition to `READ_VISIT_INTAKE_QUEUE`) so `GET /visit-intakes/:id`
+   * works for them too.
+   */
+  READ_VISIT_INTAKE = 'read_visit_intake',
+  /** Grants access to `PATCH /visit-intakes/:id/link` (BAC-45, AC3): staff associate a specific provider + appointment with a pending intake. */
+  LINK_VISIT_INTAKE = 'link_visit_intake',
 }
