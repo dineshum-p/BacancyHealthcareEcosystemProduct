@@ -70,6 +70,45 @@ describe('PatientProfileRepository', () => {
       expect(Number(rows.rows[0].count)).toBe(1);
     });
 
+    it('handles two concurrent upserts for a patient with no pre-existing row without throwing a unique_violation (23505)', async () => {
+      const [first, second] = await Promise.all([
+        repository.upsert(SCHEMA, PATIENT_ID, {
+          allergies: [{ substance: 'Penicillin' }],
+          chronicConditions: [],
+          medications: [],
+        }),
+        repository.upsert(SCHEMA, PATIENT_ID, {
+          allergies: [{ substance: 'Peanuts' }],
+          chronicConditions: [{ name: 'Asthma' }],
+          medications: [{ name: 'Albuterol' }],
+        }),
+      ]);
+
+      // Both calls resolve successfully (no unhandled 23505) and agree on
+      // the row's stable id -- exactly one profile row was ever created.
+      expect(first.id).toBe(second.id);
+
+      const rows: QueryResult<{ count: string }> = await pool.query(
+        `SELECT count(*) AS count FROM ${quoteSchemaIdentifier(SCHEMA)}.patient_profiles`,
+      );
+      expect(Number(rows.rows[0].count)).toBe(1);
+
+      // Whichever call's UPDATE lost the race falls through to an INSERT
+      // that hits the UNIQUE(patient_id) violation left by the winner's
+      // INSERT; that call must retry as an UPDATE against the winner's row
+      // rather than surfacing the 23505 -- so the final row reflects ONE of
+      // the two payloads in full (never a merge/corruption of both).
+      const finalRecord = await repository.findByPatientId(SCHEMA, PATIENT_ID);
+      expect(finalRecord).not.toBeNull();
+      const matchesFirstPayload =
+        finalRecord?.allergies.length === 1 &&
+        finalRecord.allergies[0].substance === 'Penicillin';
+      const matchesSecondPayload =
+        finalRecord?.allergies.length === 1 &&
+        finalRecord.allergies[0].substance === 'Peanuts';
+      expect(matchesFirstPayload || matchesSecondPayload).toBe(true);
+    });
+
     it('never returns an updatedAt earlier than createdAt after an edit', async () => {
       const first = await repository.upsert(SCHEMA, PATIENT_ID, {
         allergies: [],

@@ -76,4 +76,46 @@ describe('UpsertPatientProfileDto', () => {
     });
     expect(errors).toContain('medications');
   });
+
+  describe('array size bound (defense-in-depth against an oversized payload)', () => {
+    it('rejects an allergies list exceeding the max allowed entries', async () => {
+      const errors = await validateDto({
+        ...VALID_PAYLOAD,
+        allergies: Array.from({ length: 101 }, (_, i) => ({
+          substance: `Substance ${i}`,
+        })),
+      });
+      expect(errors).toContain('allergies');
+    });
+
+    it('rejects a chronicConditions list exceeding the max allowed entries', async () => {
+      const errors = await validateDto({
+        ...VALID_PAYLOAD,
+        chronicConditions: Array.from({ length: 101 }, (_, i) => ({
+          name: `Condition ${i}`,
+        })),
+      });
+      expect(errors).toContain('chronicConditions');
+    });
+
+    it('rejects a medications list exceeding the max allowed entries', async () => {
+      const errors = await validateDto({
+        ...VALID_PAYLOAD,
+        medications: Array.from({ length: 101 }, (_, i) => ({
+          name: `Medication ${i}`,
+        })),
+      });
+      expect(errors).toContain('medications');
+    });
+
+    it('accepts a list at exactly the max allowed entries (boundary is inclusive)', async () => {
+      const errors = await validateDto({
+        ...VALID_PAYLOAD,
+        allergies: Array.from({ length: 100 }, (_, i) => ({
+          substance: `Substance ${i}`,
+        })),
+      });
+      expect(errors).toEqual([]);
+    });
+  });
 });

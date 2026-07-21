@@ -41,6 +41,26 @@ const DECRYPTED_PROJECTION = `
   medications, created_at, updated_at
 `;
 
+/** Postgres's (and pg-mem's) error code for a UNIQUE constraint violation. */
+const UNIQUE_VIOLATION_CODE = '23505';
+
+/**
+ * Narrows an unknown `catch` value down to "this was specifically a
+ * UNIQUE-constraint violation (23505)" -- `pg`/`pg-mem` both throw a plain
+ * `Error` decorated with a Postgres error `code` string, not a distinct
+ * error class, so a `code` property check is the correct discriminator.
+ * Anything else (a genuinely unexpected error) is deliberately NOT treated
+ * as this specific, recoverable race.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === UNIQUE_VIOLATION_CODE
+  );
+}
+
 /**
  * Data access for a tenant's `<schema>.patient_profiles` table (BAC-44).
  * Establishes this service's first column-level PHI encryption pattern via
@@ -82,6 +102,15 @@ const DECRYPTED_PROJECTION = `
  * that whole class of engine-divergence risk (untested here for `DO UPDATE`
  * specifically) by never relying on `ON CONFLICT`'s `RETURNING` behavior at
  * all.
+ *
+ * That UPDATE-then-INSERT shape has its own race, closed explicitly rather
+ * than ignored: two concurrent `upsert()` calls for a `patientId` with no
+ * existing row can both run the UPDATE (0 rows affected for both) and both
+ * fall through to the INSERT branch; `patient_id`'s UNIQUE constraint lets
+ * only one INSERT win, and the loser gets a `23505` unique-violation. `
+ * upsert()` catches that specific error code and retries as an UPDATE (the
+ * row now exists -- the winner just created it) instead of letting it
+ * surface as an unhandled 500. See `isUniqueViolation` below.
  */
 @Injectable()
 export class PatientProfileRepository {
@@ -136,21 +165,49 @@ export class PatientProfileRepository {
       return this.toEntity(updateResult.rows[0]);
     }
 
-    const insertResult: QueryResult<PatientProfileRow> = await this.pool.query(
-      `INSERT INTO ${schema}.patient_profiles
-         (id, patient_id, allergies, chronic_conditions, medications)
-       VALUES ($2, $3, pgp_sym_encrypt($4, $1), pgp_sym_encrypt($5, $1), $6)
-       RETURNING ${DECRYPTED_PROJECTION}`,
-      [
-        key,
-        randomUUID(),
-        patientId,
-        allergiesJson,
-        chronicConditionsJson,
-        medicationsJson,
-      ],
-    );
-    return this.toEntity(insertResult.rows[0]);
+    try {
+      const insertResult: QueryResult<PatientProfileRow> =
+        await this.pool.query(
+          `INSERT INTO ${schema}.patient_profiles
+             (id, patient_id, allergies, chronic_conditions, medications)
+           VALUES ($2, $3, pgp_sym_encrypt($4, $1), pgp_sym_encrypt($5, $1), $6)
+           RETURNING ${DECRYPTED_PROJECTION}`,
+          [
+            key,
+            randomUUID(),
+            patientId,
+            allergiesJson,
+            chronicConditionsJson,
+            medicationsJson,
+          ],
+        );
+      return this.toEntity(insertResult.rows[0]);
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // Lost the INSERT race: a concurrent `upsert()` call for this SAME
+      // `patientId` committed its own INSERT between our UPDATE (which
+      // affected 0 rows, since no profile existed yet) and this INSERT --
+      // `patient_id`'s UNIQUE constraint rejected ours with a 23505. The row
+      // now exists (the other caller just created it), so re-run as an
+      // UPDATE rather than surfacing a 500; this mirrors the exact retry a
+      // fresh `upsert()` call would take, and keeps this method's contract
+      // (resolves with the row's own data, never throws on legitimate
+      // concurrent use) intact without adopting `ON CONFLICT ... DO UPDATE`
+      // (see this class's doc comment for why that's avoided here).
+      const retryResult: QueryResult<PatientProfileRow> = await this.pool.query(
+        `UPDATE ${schema}.patient_profiles
+           SET allergies = pgp_sym_encrypt($3, $1),
+               chronic_conditions = pgp_sym_encrypt($4, $1),
+               medications = $5,
+               updated_at = now()
+           WHERE patient_id = $2
+           RETURNING ${DECRYPTED_PROJECTION}`,
+        [key, patientId, allergiesJson, chronicConditionsJson, medicationsJson],
+      );
+      return this.toEntity(retryResult.rows[0]);
+    }
   }
 
   private toEntity(row: PatientProfileRow): PatientProfileRecord {

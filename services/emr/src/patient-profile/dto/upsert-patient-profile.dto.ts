@@ -1,9 +1,19 @@
 import { Type } from 'class-transformer';
-import { IsArray, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, ValidateNested } from 'class-validator';
 import type { UpsertPatientProfileRequest } from '@hep/shared-types';
 import { AllergyDto } from '../../encounters/dto/allergy.dto';
 import { ChronicConditionDto } from './chronic-condition.dto';
 import { MedicationDto } from './medication.dto';
+
+/**
+ * Upper bound on the number of entries accepted in any one of this DTO's
+ * arrays -- defense-in-depth against an oversized payload (accidental or
+ * malicious) forcing this service to encrypt/serialize/store an unbounded
+ * list. No real patient baseline plausibly needs anywhere near this many
+ * distinct allergies/chronic conditions/medications; chosen generously so it
+ * never rejects a legitimate payload.
+ */
+const MAX_PROFILE_LIST_ENTRIES = 100;
 
 /**
  * Validates the body of `PUT /patients/:patientId/profile` (BAC-44) against
@@ -17,16 +27,19 @@ import { MedicationDto } from './medication.dto';
  */
 export class UpsertPatientProfileDto implements UpsertPatientProfileRequest {
   @IsArray()
+  @ArrayMaxSize(MAX_PROFILE_LIST_ENTRIES)
   @ValidateNested({ each: true })
   @Type(() => AllergyDto)
   allergies!: AllergyDto[];
 
   @IsArray()
+  @ArrayMaxSize(MAX_PROFILE_LIST_ENTRIES)
   @ValidateNested({ each: true })
   @Type(() => ChronicConditionDto)
   chronicConditions!: ChronicConditionDto[];
 
   @IsArray()
+  @ArrayMaxSize(MAX_PROFILE_LIST_ENTRIES)
   @ValidateNested({ each: true })
   @Type(() => MedicationDto)
   medications!: MedicationDto[];
