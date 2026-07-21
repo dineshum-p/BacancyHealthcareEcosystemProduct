@@ -51,6 +51,24 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * is out of scope and would be a separate, later UI gating decision even
  * though the backend already grants staff roles the same server-side
  * permission for a future such page.
+ *
+ * `'create_visit_intake'`/`'read_visit_intake_queue'`/`'read_visit_intake'`/
+ * `'link_visit_intake'` (BAC-47) mirror `services/scheduling`'s OWN
+ * `role-permissions.map.ts` (BAC-45) exactly, unlike `'read_encounter'`'s
+ * deliberate divergence above: `'create_visit_intake'` gates the patient-
+ * facing "Request a Visit" page (`patient` only, self-scoped, same as
+ * `POST /visit-intakes`); `'read_visit_intake_queue'` gates the staff-facing
+ * triage queue (`super_admin`/`clinic_admin`/`staff` only, never `provider`
+ * or `patient` -- the server's `READ_VISIT_INTAKE_QUEUE` permission is
+ * granted to exactly this same set); `'link_visit_intake'` gates the queue's
+ * "mark as booked" action (same staff-side set); `'read_visit_intake'` gates
+ * the single-intake detail page and is granted to EVERY role that can ever
+ * read at least one intake (the submitting `patient`'s own, the assigned
+ * `provider`'s own, and every staff-side role's unrestricted read) -- the
+ * finer, INSTANCE-level "whose intake" rule (own patient / assigned provider
+ * / any staff) is enforced server-side (`assertVisitIntakeReadScope`), not
+ * expressible in this role-level map, exactly like `'read_appointments'`'s
+ * documented split above.
  */
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   super_admin: [
@@ -60,6 +78,9 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "read_appointments",
     "manage_appointments",
     "read_encounter",
+    "read_visit_intake_queue",
+    "read_visit_intake",
+    "link_visit_intake",
   ],
   clinic_admin: [
     "read_patient",
@@ -68,6 +89,9 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "read_appointments",
     "manage_appointments",
     "read_encounter",
+    "read_visit_intake_queue",
+    "read_visit_intake",
+    "link_visit_intake",
   ],
   provider: [
     "read_patient",
@@ -76,14 +100,23 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "manage_appointments",
     "read_encounter",
     "write_encounter",
+    "read_visit_intake",
   ],
   staff: [
     "read_patient",
     "review_patient_self_registration",
     "read_appointments",
     "manage_appointments",
+    "read_visit_intake_queue",
+    "read_visit_intake",
+    "link_visit_intake",
   ],
-  patient: ["read_patient_profile", "write_patient_profile"],
+  patient: [
+    "read_patient_profile",
+    "write_patient_profile",
+    "create_visit_intake",
+    "read_visit_intake",
+  ],
 };
 
 export function getPermissionsForRole(role: UserRole): readonly Permission[] {
