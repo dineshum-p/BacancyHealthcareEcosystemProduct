@@ -39,6 +39,9 @@ function PatientSearchContent() {
 
   const { user } = useCurrentUser();
   const canRegister = user ? roleHasPermission(user.role, "write_patient") : false;
+  const canViewEncounters = user
+    ? roleHasPermission(user.role, "read_encounter")
+    : false;
   const canReviewSelfRegistrations = user
     ? roleHasPermission(user.role, "review_patient_self_registration")
     : false;
@@ -117,7 +120,10 @@ function PatientSearchContent() {
       {!isLoading && !isError && data && data.items.length > 0 && (
         <>
           <div className="overflow-hidden rounded-xl border border-border/70">
-            <PatientResultsTable patients={data.items} />
+            <PatientResultsTable
+              patients={data.items}
+              canViewEncounters={canViewEncounters}
+            />
           </div>
 
           <div className="flex items-center gap-3">

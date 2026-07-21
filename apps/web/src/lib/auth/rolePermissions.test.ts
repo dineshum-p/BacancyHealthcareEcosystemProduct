@@ -45,3 +45,19 @@ describe("roleHasPermission (BAC-21)", () => {
     }
   });
 });
+
+describe("roleHasPermission (BAC-20)", () => {
+  it("grants read_encounter to super_admin, clinic_admin, and provider for oversight, but NOT staff", () => {
+    expect(roleHasPermission("super_admin", "read_encounter")).toBe(true);
+    expect(roleHasPermission("clinic_admin", "read_encounter")).toBe(true);
+    expect(roleHasPermission("provider", "read_encounter")).toBe(true);
+    expect(roleHasPermission("staff", "read_encounter")).toBe(false);
+  });
+
+  it("grants write_encounter to provider only -- the encounter's treating provider (RBAC)", () => {
+    expect(roleHasPermission("provider", "write_encounter")).toBe(true);
+    expect(roleHasPermission("super_admin", "write_encounter")).toBe(false);
+    expect(roleHasPermission("clinic_admin", "write_encounter")).toBe(false);
+    expect(roleHasPermission("staff", "write_encounter")).toBe(false);
+  });
+});

@@ -10,8 +10,8 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * `clinic_admin`/`super_admin`, unlike `write_patient` which `staff` does
  * NOT hold -- mirrors `services/patient`'s own `role-permissions.map.ts`
  * exactly, see that file's doc comment for the full rationale). Exactly like
- * `RequireRole`, this is a UX convenience only: the real enforcement is
- * `services/patient`'s own `PermissionsGuard`, which independently 403s.
+ * `RequireRole`, this is a UX convenience only: the real enforcement is each
+ * backing service's own `PermissionsGuard`, which independently 403s.
  *
  * `'read_appointments'`/`'manage_appointments'` mirror `services/scheduling`'s
  * OWN `ROLE_PERMISSIONS` map (BAC-16/BAC-21) exactly the same way: every role
@@ -21,6 +21,22 @@ import type { Permission, UserRole } from "@hep/shared-types";
  * `user.role === 'provider'`, mirroring that service's
  * `provider-scope.util.ts`, and is independently re-enforced server-side
  * regardless of what this map says).
+ *
+ * `'read_encounter'`/`'write_encounter'` were added by BAC-20 for the SOAP
+ * encounter-note editor and DELIBERATELY DIVERGE from `services/emr`'s own
+ * `role-permissions.map.ts` (BAC-15), which grants `WRITE_ENCOUNTER` to
+ * `super_admin`/`clinic_admin`/`provider` alike: BAC-20's acceptance criteria
+ * are stricter than that ticket's server-side default and explicitly call
+ * for a UI where ONLY `provider` (the treating clinician) can open/write/sign
+ * a note, `clinic_admin` gets read-only oversight access, and `staff` has no
+ * access to the note editor route at all -- including no read access, even
+ * though `services/emr` itself also grants `READ_ENCOUNTER` to `staff` for
+ * general chart lookups. Since this map is UI-gating only (the server remains
+ * the actual authority), narrowing it here does not weaken real enforcement --
+ * it only hides UI a caller isn't meant to be steered toward for this
+ * feature. `super_admin` is treated like `clinic_admin` (read-only oversight,
+ * no write) since the ticket doesn't call it out explicitly; this is a
+ * judgment call, not dictated by an explicit acceptance criterion.
  */
 const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   super_admin: [
@@ -29,6 +45,7 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "review_patient_self_registration",
     "read_appointments",
     "manage_appointments",
+    "read_encounter",
   ],
   clinic_admin: [
     "read_patient",
@@ -36,12 +53,15 @@ const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
     "review_patient_self_registration",
     "read_appointments",
     "manage_appointments",
+    "read_encounter",
   ],
   provider: [
     "read_patient",
     "write_patient",
     "read_appointments",
     "manage_appointments",
+    "read_encounter",
+    "write_encounter",
   ],
   staff: [
     "read_patient",

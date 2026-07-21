@@ -28,4 +28,23 @@ describe("PatientResultsTable", () => {
     expect(screen.getByText("1990-05-12")).toBeInTheDocument();
     expect(screen.getByText("jane.doe@example.com")).toBeInTheDocument();
   });
+
+  it("omits the chart link by default (BAC-20, RBAC)", () => {
+    render(<PatientResultsTable patients={PATIENTS} />);
+
+    expect(
+      screen.queryByRole("link", { name: /view chart/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("links each patient row to its encounters page when canViewEncounters (BAC-20, AC1)", () => {
+    render(
+      <PatientResultsTable patients={PATIENTS} canViewEncounters />,
+    );
+
+    expect(screen.getByRole("link", { name: /view chart/i })).toHaveAttribute(
+      "href",
+      "/patients/p1/encounters",
+    );
+  });
 });
