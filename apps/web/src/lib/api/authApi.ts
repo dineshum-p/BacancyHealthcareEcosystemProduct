@@ -1,4 +1,9 @@
-import type { AuthTokens, LoginResult } from "@hep/shared-types";
+import type {
+  AuthTokens,
+  LoginResult,
+  PatientSignUpRequest,
+  RegisteredUser,
+} from "@hep/shared-types";
 
 /**
  * `services/auth`'s base URL (BAC-13). MUST be overridden outside local dev
@@ -68,6 +73,31 @@ export async function login(
     throw new Error(await readErrorMessage(response));
   }
   return (await response.json()) as LoginResult;
+}
+
+/**
+ * `POST /auth/patients/register` (BAC-42/BAC-43). Creates a login-capable
+ * `role: 'patient'` account -- deliberately returns only `RegisteredUser`,
+ * NEVER `AuthTokens` (see `PatientSignUpRequest`'s doc comment in
+ * `@hep/shared-types`): the caller must separately call `login()` with the
+ * same credentials to obtain a session, exactly like this service's other
+ * registration paths. A duplicate email rejects with a 409, and this
+ * endpoint is rate-limited (429) -- both surface via `readErrorMessage`'s
+ * uniform handling, same as every other call in this module.
+ */
+export async function registerPatient(
+  tenantId: string,
+  input: PatientSignUpRequest,
+): Promise<RegisteredUser> {
+  const response = await fetch(`${AUTH_SERVICE_URL}/auth/patients/register`, {
+    method: "POST",
+    headers: buildTenantHeaders(tenantId),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  return (await response.json()) as RegisteredUser;
 }
 
 export interface MfaLoginVerification {
