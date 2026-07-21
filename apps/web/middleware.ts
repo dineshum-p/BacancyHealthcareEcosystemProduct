@@ -13,10 +13,8 @@ import { resolveTenantSlugFromHost } from "@/src/lib/tenant/resolveTenantSlugFro
  * `/<slug>/register` URLs keep working unchanged, and this is safe to
  * deploy without `APP_ROOT_DOMAIN` configured at all.
  */
-const TENANT_SCOPED_PATHS = ["/register"];
-
 export function middleware(request: NextRequest) {
-  if (!TENANT_SCOPED_PATHS.includes(request.nextUrl.pathname)) {
+  if (request.nextUrl.pathname !== "/register") {
     return NextResponse.next();
   }
 
@@ -37,11 +35,13 @@ export function middleware(request: NextRequest) {
 }
 
 /**
- * Belt-and-suspenders with the `TENANT_SCOPED_PATHS` check above: `matcher`
+ * Belt-and-suspenders with the in-function pathname check above: `matcher`
  * stops Next's router from invoking this middleware at all for any other
  * path (cheaper, runs first), while the in-function check keeps `middleware`
- * itself correct if ever called directly or the matcher config drifts.
+ * itself correct if ever called directly or this config drifts. MUST stay a
+ * literal array of static strings -- Next statically parses this at build
+ * time and fails the entire build if it's a variable reference.
  */
 export const config = {
-  matcher: TENANT_SCOPED_PATHS,
+  matcher: ["/register"],
 };
