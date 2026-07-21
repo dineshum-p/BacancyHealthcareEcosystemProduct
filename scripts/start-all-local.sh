@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts every backend service (tenant, auth, patient, emr, billing,
-# notification) locally, all pointed at ONE shared Postgres instance --
+# notification, scheduling) locally, all pointed at ONE shared Postgres
+# instance --
 # `services/tenant`'s own docker-compose.test.yml -- so the shared
 # `public.tenants` registry (and cross-service calls like admin-seed) actually
 # work, instead of each service's default isolated per-service database.
@@ -30,6 +31,14 @@ JWT_ACCESS_SECRET=dev-insecure-access-secret-change-me
 MFA_ENCRYPTION_KEY=dev-insecure-mfa-key-change-me
 INTERNAL_SERVICE_KEY=dev-insecure-internal-service-key-change-me
 
+# BAC-38: lets apps/web's middleware.ts/login page test tenant-subdomain
+# resolution locally (e.g. acme-clinic.localhost:3000) -- every backend
+# service's CORS_ALLOWED_ORIGIN_SUFFIX must match apps/web's own
+# APP_ROOT_DOMAIN for the browser to be allowed to call them cross-origin
+# from that subdomain. Additive: CORS_ALLOWED_ORIGINS's exact-match
+# localhost:3000 origin still works too.
+CORS_ALLOWED_ORIGIN_SUFFIX=localhost
+
 # name:port -- apps/web's dev server owns port 3000, so every backend
 # service starts from 3001.
 SERVICES=(
@@ -39,6 +48,7 @@ SERVICES=(
   "notification:3004"
   "billing:3005"
   "patient:3006"
+  "scheduling:3007"
 )
 
 echo "==> Starting shared Postgres (services/tenant's docker-compose.test.yml, port $DB_PORT)"
@@ -74,6 +84,7 @@ for entry in "${SERVICES[@]}"; do
     export JWT_ACCESS_SECRET
     export MFA_ENCRYPTION_KEY
     export INTERNAL_SERVICE_KEY
+    export CORS_ALLOWED_ORIGIN_SUFFIX
     export AUTH_SERVICE_URL="http://localhost:3002"
     export NOTIFICATION_SERVICE_URL="http://localhost:3004"
     nohup npm run start:dev > "$LOG_DIR/$name.log" 2>&1 &
