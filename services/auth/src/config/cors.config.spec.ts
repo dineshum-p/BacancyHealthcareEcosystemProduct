@@ -13,7 +13,7 @@ describe('getCorsConfig', () => {
 
     expect(getCorsConfig()).toEqual({
       origin: ['http://localhost:3000'],
-      methods: ['GET', 'POST'],
+      methods: ['GET', 'POST', 'PATCH'],
       allowedHeaders: ['Authorization', 'X-Tenant-Id', 'Content-Type'],
       credentials: true,
     });
@@ -21,19 +21,19 @@ describe('getCorsConfig', () => {
 
   it('reads a comma-separated allow-list from CORS_ALLOWED_ORIGINS', () => {
     process.env.CORS_ALLOWED_ORIGINS =
-      'https://admin.example.com, https://console.example.com';
+      'https://clinic.example.com, https://admin.example.com';
 
     expect(getCorsConfig().origin).toEqual([
+      'https://clinic.example.com',
       'https://admin.example.com',
-      'https://console.example.com',
     ]);
   });
 
-  it('always allows the methods and headers the onboarding console actually uses', () => {
-    process.env.CORS_ALLOWED_ORIGINS = 'https://admin.example.com';
+  it('always allows the methods and headers the login/MFA console actually uses', () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'https://clinic.example.com';
 
     const config = getCorsConfig();
-    expect(config.methods).toEqual(['GET', 'POST']);
+    expect(config.methods).toEqual(['GET', 'POST', 'PATCH']);
     expect(config.allowedHeaders).toEqual([
       'Authorization',
       'X-Tenant-Id',
