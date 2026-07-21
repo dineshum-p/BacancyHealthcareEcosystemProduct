@@ -7,8 +7,25 @@ export type TenantId = string;
  * user registered for a given tenant, who is automatically assigned
  * `'super_admin'` (the bootstrap-admin resolution; see `services/auth`'s
  * `AuthService.register`). There is no separate seeding/admin-invite flow.
+ *
+ * `'patient'` (BAC-41) is the one non-clinic-staff role: unlike the other
+ * four (all clinic-staff-side), a `patient` caller is scoped to resources
+ * where THEY are the subject (`patientId`/equivalent owning-patient field
+ * equal to their own `userId`), never any other patient's, and never a
+ * staff-only administrative surface. BAC-41 only lays this RBAC foundation
+ * (the role itself, plus each backing service's default-deny posture and
+ * instance-level ownership-scoping utility) -- it deliberately grants no new
+ * permissions and adds no new patient-facing endpoints; see each service's
+ * own `role-permissions.map.ts` for its (currently empty, default-deny)
+ * `patient` entry, and follow-on tickets (e.g. BAC-42/BAC-44/BAC-45) for
+ * where real self-scoped capabilities get layered on.
  */
-export type UserRole = 'super_admin' | 'clinic_admin' | 'provider' | 'staff';
+export type UserRole =
+  | 'super_admin'
+  | 'clinic_admin'
+  | 'provider'
+  | 'staff'
+  | 'patient';
 
 /**
  * Permissions checked by `services/auth`'s `PermissionsGuard` (BAC-7) and
