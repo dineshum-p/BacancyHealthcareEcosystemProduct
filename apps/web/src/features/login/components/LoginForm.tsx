@@ -38,17 +38,29 @@ export interface LoginFormValues {
 export interface LoginFormProps {
   onSubmit: (input: LoginFormValues) => void;
   isSubmitting: boolean;
+  /**
+   * BAC-38: pre-fills the workspace field when the tenant was already
+   * resolved from the request's subdomain (see `app/login/page.tsx`) --
+   * still just a UX convenience, so it's editable, not a locked/hidden
+   * field: a caller can still override it, e.g. to sign into a different
+   * workspace than the one their current subdomain implies.
+   */
+  defaultTenantId?: string;
 }
 
 /** BAC-13, AC1: the login step -- workspace, email, and password. */
-export function LoginForm({ onSubmit, isSubmitting }: LoginFormProps) {
+export function LoginForm({
+  onSubmit,
+  isSubmitting,
+  defaultTenantId,
+}: LoginFormProps) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { tenantId: "", email: "", password: "" },
+    defaultValues: { tenantId: defaultTenantId ?? "", email: "", password: "" },
   });
 
   return (

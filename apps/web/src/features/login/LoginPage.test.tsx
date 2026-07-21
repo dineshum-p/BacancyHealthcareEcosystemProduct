@@ -270,5 +270,14 @@ describe("LoginPage", () => {
         screen.getByRole("button", { name: /signing in/i }),
       ).toBeDisabled();
     });
+
+    it("pre-fills the workspace field from initialTenantSlug (BAC-38: subdomain-resolved tenant)", () => {
+      mockUseLogin({});
+      mockUseVerifyMfaLogin({});
+
+      render(<LoginPage initialTenantSlug="acme-clinic" />);
+
+      expect(screen.getByLabelText(/workspace/i)).toHaveValue("acme-clinic");
+    });
   });
 });
