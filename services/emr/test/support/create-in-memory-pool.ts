@@ -1,4 +1,10 @@
-import { newDb } from 'pg-mem';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from 'node:crypto';
+import { DataType, IMemoryDb, newDb } from 'pg-mem';
 import { Pool } from 'pg';
 
 /**
@@ -18,8 +24,76 @@ import { Pool } from 'pg';
  */
 export function createInMemoryPool(): Pool {
   const db = newDb({ autoCreateForeignKeyIndices: true });
+  registerFakePgcryptoExtension(db);
   const PgCompatiblePool = db.adapters.createPg().Pool as new () => Pool;
   return new PgCompatiblePool();
+}
+
+/**
+ * Fakes just enough of real Postgres's `pgcrypto` extension --
+ * `pgp_sym_encrypt`/`pgp_sym_decrypt` -- for BAC-44's column-level PHI
+ * encryption (`PatientProfileRepository`) to be exercised against this
+ * in-memory stand-in. `CREATE EXTENSION IF NOT EXISTS pgcrypto`
+ * (`EmrSchemaProvisioner.ensurePatientProfilesTable` runs the EXACT SAME DDL
+ * against real Postgres in production) resolves against WHATEVER extension
+ * is registered under that name on the underlying `pg-mem` `IMemoryDb` --
+ * there is no real `pgcrypto` C extension available to a pure-JS in-memory
+ * engine, so this registers a real (NOT a pass-through/no-op), reversible
+ * AES-256-CBC implementation instead. This is deliberately actual symmetric
+ * encryption -- not an identity function -- so both a round-trip test
+ * (encrypt then decrypt returns the original plaintext) AND a "the raw
+ * stored bytes are NOT plaintext" assertion are meaningful against pg-mem,
+ * exactly as they would be against real Postgres's own `pgcrypto`.
+ *
+ * Registered unconditionally (harmless/inert for every other spec that never
+ * runs `CREATE EXTENSION pgcrypto`), so every `.spec.ts`/`.e2e-spec.ts` that
+ * already calls `createInMemoryPool()` gets this for free.
+ */
+function registerFakePgcryptoExtension(db: IMemoryDb): void {
+  db.registerExtension('pgcrypto', (schema) => {
+    schema.registerFunction({
+      name: 'pgp_sym_encrypt',
+      args: [DataType.text, DataType.text],
+      returns: DataType.bytea,
+      implementation: (data: string, key: string) =>
+        fakePgpSymEncrypt(data, key),
+    });
+    schema.registerFunction({
+      name: 'pgp_sym_decrypt',
+      args: [DataType.bytea, DataType.text],
+      returns: DataType.text,
+      implementation: (data: Buffer, key: string) =>
+        fakePgpSymDecrypt(data, key),
+    });
+  });
+}
+
+/** `pgp_sym_encrypt`/`pgp_sym_decrypt` both key off a SHA-256 digest of the caller-supplied password, matching AES-256's required 32-byte key length. */
+function deriveAesKey(password: string): Buffer {
+  return createHash('sha256').update(password).digest();
+}
+
+function fakePgpSymEncrypt(plaintext: string, password: string): Buffer {
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', deriveAesKey(password), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
+  // Real pgcrypto embeds everything needed to decrypt (including its own
+  // salt/IV) in the returned bytea; this fake mirrors that by prepending the
+  // IV to the ciphertext rather than requiring a separate out-of-band value.
+  return Buffer.concat([iv, ciphertext]);
+}
+
+function fakePgpSymDecrypt(stored: Buffer, password: string): string {
+  const iv = stored.subarray(0, 16);
+  const ciphertext = stored.subarray(16);
+  const decipher = createDecipheriv('aes-256-cbc', deriveAesKey(password), iv);
+  return Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]).toString('utf8');
 }
 
 /**

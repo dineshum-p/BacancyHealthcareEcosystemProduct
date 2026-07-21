@@ -46,6 +46,8 @@ describe('role-permissions.map', () => {
     expect(getPermissionsForRole(UserRole.STAFF)).toEqual([
       Permission.READ_PATIENT,
       Permission.READ_ENCOUNTER,
+      Permission.READ_PATIENT_PROFILE,
+      Permission.WRITE_PATIENT_PROFILE,
     ]);
   });
 
@@ -70,8 +72,8 @@ describe('role-permissions.map', () => {
     );
   });
 
-  describe('BAC-41: patient is default-deny', () => {
-    it('grants patient NONE of the existing staff-only permissions', () => {
+  describe('BAC-41: patient is default-deny (except BAC-44 profile self-service)', () => {
+    it('grants patient NONE of the pre-existing staff-only permissions', () => {
       expect(roleHasPermission(UserRole.PATIENT, Permission.READ_PATIENT)).toBe(
         false,
       );
@@ -86,8 +88,33 @@ describe('role-permissions.map', () => {
       ).toBe(false);
     });
 
-    it('getPermissionsForRole returns an empty set for patient', () => {
-      expect(getPermissionsForRole(UserRole.PATIENT)).toEqual([]);
+    it('getPermissionsForRole returns only the BAC-44 profile permissions for patient', () => {
+      expect(getPermissionsForRole(UserRole.PATIENT)).toEqual([
+        Permission.READ_PATIENT_PROFILE,
+        Permission.WRITE_PATIENT_PROFILE,
+      ]);
+    });
+  });
+
+  describe('BAC-44: patient baseline profile permissions', () => {
+    it('grants READ_PATIENT_PROFILE and WRITE_PATIENT_PROFILE to every staff-side role, INCLUDING staff', () => {
+      for (const role of STAFF_SIDE_ROLES) {
+        expect(roleHasPermission(role, Permission.READ_PATIENT_PROFILE)).toBe(
+          true,
+        );
+        expect(roleHasPermission(role, Permission.WRITE_PATIENT_PROFILE)).toBe(
+          true,
+        );
+      }
+    });
+
+    it('grants READ_PATIENT_PROFILE and WRITE_PATIENT_PROFILE to patient (self-scoping enforced elsewhere)', () => {
+      expect(
+        roleHasPermission(UserRole.PATIENT, Permission.READ_PATIENT_PROFILE),
+      ).toBe(true);
+      expect(
+        roleHasPermission(UserRole.PATIENT, Permission.WRITE_PATIENT_PROFILE),
+      ).toBe(true);
     });
   });
 });

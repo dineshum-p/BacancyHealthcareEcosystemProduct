@@ -20,4 +20,8 @@ export enum Permission {
   READ_ENCOUNTER = 'read_encounter',
   /** Grants access to `POST /patients/:patientId/encounters` (BAC-15, AC1). */
   WRITE_ENCOUNTER = 'write_encounter',
+  /** Grants access to `GET /patients/:patientId/profile` (BAC-44). */
+  READ_PATIENT_PROFILE = 'read_patient_profile',
+  /** Grants access to `PUT /patients/:patientId/profile` (BAC-44). */
+  WRITE_PATIENT_PROFILE = 'write_patient_profile',
 }
