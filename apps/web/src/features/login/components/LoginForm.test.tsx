@@ -76,4 +76,12 @@ describe("LoginForm", () => {
 
     expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
   });
+
+  it("pre-fills the workspace field when defaultTenantId is given (BAC-38: subdomain-resolved tenant)", () => {
+    render(
+      <LoginForm onSubmit={vi.fn()} isSubmitting={false} defaultTenantId="acme-clinic" />,
+    );
+
+    expect(screen.getByLabelText(/workspace/i)).toHaveValue("acme-clinic");
+  });
 });

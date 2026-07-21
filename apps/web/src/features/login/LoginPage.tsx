@@ -25,7 +25,17 @@ interface MfaChallengeState {
  * `useSyncExternalStore`-worthy case `useCurrentUser`'s doc comment
  * describes) rather than ever flashing the login form.
  */
-export function LoginPage() {
+export interface LoginPageProps {
+  /**
+   * BAC-38: the tenant slug already resolved server-side from this
+   * request's subdomain (see `app/login/page.tsx`), if any -- pre-fills
+   * the workspace field so a caller reaching `/login` via
+   * `<slug>.<APP_ROOT_DOMAIN>` never has to type it.
+   */
+  initialTenantSlug?: string;
+}
+
+export function LoginPage({ initialTenantSlug }: LoginPageProps = {}) {
   const router = useRouter();
   const { user, isLoading } = useCurrentUser();
 
@@ -43,11 +53,17 @@ export function LoginPage() {
     router.replace(completeLogin(tokens));
   }
 
-  return <LoginFlow onAuthenticated={handleAuthenticated} />;
+  return (
+    <LoginFlow
+      onAuthenticated={handleAuthenticated}
+      initialTenantSlug={initialTenantSlug}
+    />
+  );
 }
 
 interface LoginFlowProps {
   onAuthenticated: (tokens: AuthTokens) => void;
+  initialTenantSlug?: string;
 }
 
 /**
@@ -57,7 +73,7 @@ interface LoginFlowProps {
  * persisted, matching `MfaChallenge`'s doc comment that the challenge token
  * is single-purpose and short-lived.
  */
-function LoginFlow({ onAuthenticated }: LoginFlowProps) {
+function LoginFlow({ onAuthenticated, initialTenantSlug }: LoginFlowProps) {
   const [challenge, setChallenge] = useState<MfaChallengeState | null>(null);
   const loginMutation = useLogin();
   const verifyMutation = useVerifyMfaLogin();
@@ -120,7 +136,11 @@ function LoginFlow({ onAuthenticated }: LoginFlowProps) {
               isSubmitting={isSubmitting}
             />
           ) : (
-            <LoginForm onSubmit={handleLoginSubmit} isSubmitting={isSubmitting} />
+            <LoginForm
+              onSubmit={handleLoginSubmit}
+              isSubmitting={isSubmitting}
+              defaultTenantId={initialTenantSlug}
+            />
           )}
 
           {isError && (
