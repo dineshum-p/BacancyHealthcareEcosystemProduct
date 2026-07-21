@@ -18,6 +18,17 @@ This directory is intentionally empty, for the same reason `services/auth`'s,
   `PatientSchemaProvisioner`/`EmrSchemaProvisioner`/`BillingSchemaProvisioner`/
   `NotificationsSchemaProvisioner`/`AuthSchemaProvisioner` use in their own
   services.
+- `<tenant_schema>.visit_intakes` (BAC-45, a patient's per-visit intake
+  submission -- distinct from BAC-44's one-time baseline profile) is
+  similarly created lazily and idempotently, by
+  `VisitIntakeSchemaProvisioner` (`src/visit-intakes/visit-intake-schema.provisioner.ts`).
+  `reason_for_visit`/`symptoms`/`whats_new_since_last_visit` are column-level
+  encrypted via the `pgcrypto` extension (`pgp_sym_encrypt`/
+  `pgp_sym_decrypt`), replicating `services/emr`'s BAC-44
+  `EmrSchemaProvisioner.ensurePatientProfilesTable`/`PatientProfileRepository`
+  pattern exactly (see `src/visit-intakes/visit-intakes.repository.ts`'s doc
+  comment) -- this service has its own `PGCRYPTO_COLUMN_KEY`-sourced
+  `src/config/pgcrypto.config.ts`, independent of `services/emr`'s.
 
 The `migrate:up` / `migrate:down` npm scripts and `node-pg-migrate`
 devDependency are kept for scaffold consistency with the other services, and
