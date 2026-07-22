@@ -13,7 +13,7 @@ describe('getCorsConfig', () => {
 
     expect(getCorsConfig()).toEqual({
       origin: ['http://localhost:3000'],
-      methods: ['GET', 'POST'],
+      methods: ['GET', 'POST', 'PUT'],
       allowedHeaders: ['Authorization', 'X-Tenant-Id', 'Content-Type'],
       credentials: true,
     });
@@ -33,7 +33,7 @@ describe('getCorsConfig', () => {
     process.env.CORS_ALLOWED_ORIGINS = 'https://emr.example.com';
 
     const config = getCorsConfig();
-    expect(config.methods).toEqual(['GET', 'POST']);
+    expect(config.methods).toEqual(['GET', 'POST', 'PUT']);
     expect(config.allowedHeaders).toEqual([
       'Authorization',
       'X-Tenant-Id',

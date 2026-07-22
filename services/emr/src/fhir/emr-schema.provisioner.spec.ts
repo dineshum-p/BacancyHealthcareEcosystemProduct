@@ -17,11 +17,11 @@ describe('EmrSchemaProvisioner', () => {
       await provisioner.ensurePatientsTable('tenant_acme');
 
       await pool.query(
-        'INSERT INTO "tenant_acme".patients (id, resource) VALUES ($1, $2)',
+        'INSERT INTO "tenant_acme".fhir_patients (id, resource) VALUES ($1, $2)',
         ['11111111-1111-1111-1111-111111111111', JSON.stringify({ a: 1 })],
       );
       const result = await pool.query(
-        'SELECT resource FROM "tenant_acme".patients',
+        'SELECT resource FROM "tenant_acme".fhir_patients',
       );
 
       expect(result.rows).toEqual([{ resource: { a: 1 } }]);
@@ -38,6 +38,36 @@ describe('EmrSchemaProvisioner', () => {
       await expect(
         provisioner.ensurePatientsTable('bad; drop table x;'),
       ).rejects.toThrow();
+    });
+
+    it("does not collide with services/patient's own differently-shaped `patients` table in a shared database", async () => {
+      // Reproduces services/patient's `PatientSchemaProvisioner.ensurePatientsTable`
+      // DDL (BAC-14) against the SAME schema -- in local dev every service is
+      // deliberately pointed at one shared Postgres database
+      // (scripts/start-all-local.sh), so a schema this service's own
+      // `ensurePatientsTable` provisions can already contain a `patients`
+      // table created by `services/patient` instead, with none of this
+      // service's expected `resource` JSONB column.
+      await pool.query(`
+        CREATE TABLE "tenant_acme".patients (
+          id UUID PRIMARY KEY,
+          mrn TEXT NOT NULL,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          date_of_birth DATE NOT NULL
+        )
+      `);
+
+      await provisioner.ensurePatientsTable('tenant_acme');
+      await pool.query(
+        'INSERT INTO "tenant_acme".fhir_patients (id, resource) VALUES ($1, $2)',
+        ['11111111-1111-1111-1111-111111111111', JSON.stringify({ a: 1 })],
+      );
+      const result = await pool.query(
+        'SELECT resource FROM "tenant_acme".fhir_patients',
+      );
+
+      expect(result.rows).toEqual([{ resource: { a: 1 } }]);
     });
   });
 
