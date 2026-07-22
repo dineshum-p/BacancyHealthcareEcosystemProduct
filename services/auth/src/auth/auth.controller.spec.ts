@@ -10,6 +10,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UserRole } from './user-role.enum';
 import { RequestWithAuth } from './request-with-auth.interface';
+import { RequestWithPasswordResetAuth } from './request-with-password-reset-auth.interface';
 
 describe('AuthController', () => {
   let service: jest.Mocked<AuthService>;
@@ -110,6 +111,26 @@ describe('AuthController', () => {
     return {
       user: { userId, tenantId: 'tenant-1', role: UserRole.STAFF },
     } as unknown as RequestWithAuth;
+  }
+
+  /**
+   * BAC-49 fix: `resetTemporaryPassword` is guarded by
+   * `PasswordResetTokenGuard`, not `AccessTokenGuard` -- its `request.user`
+   * is a `PasswordResetTokenPayload` (`userId`/`tenantId`/`purpose`), NOT a
+   * full `AccessTokenPayload` (no `role`). Deliberately a DIFFERENT shape
+   * from `makeAuthenticatedRequest` above, to keep this test honest about
+   * what the guard actually populates.
+   */
+  function makePasswordResetAuthenticatedRequest(
+    userId: string,
+  ): RequestWithPasswordResetAuth {
+    return {
+      user: {
+        userId,
+        tenantId: 'tenant-1',
+        purpose: 'password-reset-required',
+      },
+    } as unknown as RequestWithPasswordResetAuth;
   }
 
   it('delegates mfa/enroll to the service using the authenticated user id', async () => {
@@ -251,7 +272,7 @@ describe('AuthController', () => {
 
     await expect(
       controller.resetTemporaryPassword(
-        makeAuthenticatedRequest('user-1'),
+        makePasswordResetAuthenticatedRequest('user-1'),
         dto,
       ),
     ).resolves.toBe(tokens);
@@ -259,8 +280,8 @@ describe('AuthController', () => {
     expect(service.resetTemporaryPassword).toHaveBeenCalledWith('user-1', dto);
   });
 
-  it('reset-temporary-password throws if AccessTokenGuard did not populate request.user', () => {
-    const request = {} as RequestWithAuth;
+  it('reset-temporary-password throws if PasswordResetTokenGuard did not populate request.user', () => {
+    const request = {} as RequestWithPasswordResetAuth;
     const dto = { currentPassword: 'old', newPassword: 'brand-new-password-1' };
 
     expect(() => controller.resetTemporaryPassword(request, dto)).toThrow();

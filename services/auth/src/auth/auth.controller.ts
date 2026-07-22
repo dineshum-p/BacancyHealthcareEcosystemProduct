@@ -23,6 +23,7 @@ import type {
 } from '@hep/shared-types';
 import { TenantGuard } from '../tenant-context/tenant.guard';
 import { AccessTokenGuard } from './access-token.guard';
+import { PasswordResetTokenGuard } from './password-reset-token.guard';
 import { PermissionsGuard } from './permissions.guard';
 import { InternalServiceGuard } from './internal-service.guard';
 import { RequirePermissions } from './permissions.decorator';
@@ -39,6 +40,7 @@ import { AdminSeedDto } from './dto/admin-seed.dto';
 import { CreateProviderAccountDto } from './dto/create-provider-account.dto';
 import { ResetTemporaryPasswordDto } from './dto/reset-temporary-password.dto';
 import type { RequestWithAuth } from './request-with-auth.interface';
+import type { RequestWithPasswordResetAuth } from './request-with-password-reset-auth.interface';
 
 /**
  * Thin controller: validation via DTOs + delegation to `AuthService`.
@@ -51,10 +53,13 @@ import type { RequestWithAuth } from './request-with-auth.interface';
  * themselves before they can start/complete MFA enrollment for their own
  * account. `login` and `mfa/login-verify` deliberately do NOT -- they are
  * the pre-authentication flow itself. `reset-temporary-password` (BAC-49)
- * ALSO requires `AccessTokenGuard`, same as the MFA routes -- the
- * restricted-access token `login` hands back for a `mustResetPassword`
- * account is itself `AccessTokenGuard`-verifiable (see `AuthService.login`'s
- * doc comment).
+ * requires `PasswordResetTokenGuard` instead of `AccessTokenGuard` -- a
+ * DIFFERENT, narrowly-scoped guard verifying the DIFFERENT, narrowly-scoped
+ * credential `login` hands back for a `mustResetPassword` account (see
+ * `AuthService.login`'s and `PasswordResetTokenGuard`'s doc comments): that
+ * credential is deliberately rejected by `AccessTokenGuard` (and therefore
+ * by every OTHER route in this controller), so it cannot be replayed as a
+ * general Bearer access token.
  */
 @UseGuards(TenantGuard)
 @Controller('auth')
@@ -211,30 +216,30 @@ export class AuthController {
    * BAC-49, AC2/AC4: completes the forced-reset flow for an account whose
    * `POST /auth/login` returned a `PasswordResetRequiredChallenge`
    * (`mustResetPassword: true`, BAC-48) -- or, more generally, any
-   * authenticated caller changing their own password (see
-   * `AuthService.resetTemporaryPassword`'s doc comment for why this is not
-   * further restricted to ONLY the forced-reset case). Guarded by
-   * `AccessTokenGuard` alone -- the SAME guard, same 401-on-missing/invalid-
-   * token behaviour, as `mfa/enroll`/`mfa/verify` (AC4 mirrors that
-   * precedent exactly) -- deliberately NOT a body-based challenge token like
-   * BAC-6's `mfa/login-verify`: the restricted-access token `login()` hands
-   * back for a `mustResetPassword` account is itself a normal, Bearer-
-   * usable `AccessTokenGuard`-verifiable token (see `AuthService.login`'s
-   * doc comment), so this route fits the existing `Authorization: Bearer`
-   * convention rather than inventing a new one. No `RequirePermissions` --
-   * this is exclusively a self-service, own-account operation (never a
-   * staff/admin resetting someone ELSE's password), identified entirely by
-   * `request.user.userId`, never by anything in the request body.
+   * caller holding a valid password-reset token changing their own password
+   * (see `AuthService.resetTemporaryPassword`'s doc comment for why this is
+   * not further restricted to ONLY the forced-reset case). Guarded by
+   * `PasswordResetTokenGuard`, NOT `AccessTokenGuard` -- same
+   * 401-on-missing/invalid-token behaviour (AC4 mirrors `AccessTokenGuard`'s
+   * existing precedent exactly), but verifying a cryptographically distinct,
+   * single-purpose credential (see `PasswordResetTokenGuard`'s doc comment
+   * for why): the restricted token `login()` hands back for a
+   * `mustResetPassword` account is Bearer-usable HERE and ONLY here --
+   * `AccessTokenGuard` (and every route guarded by it) rejects it outright.
+   * No `RequirePermissions` -- this is exclusively a self-service,
+   * own-account operation (never a staff/admin resetting someone ELSE's
+   * password), identified entirely by `request.user.userId`, never by
+   * anything in the request body.
    */
   @Post('reset-temporary-password')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(PasswordResetTokenGuard)
   @HttpCode(HttpStatus.OK)
   resetTemporaryPassword(
-    @Req() request: RequestWithAuth,
+    @Req() request: RequestWithPasswordResetAuth,
     @Body() dto: ResetTemporaryPasswordDto,
   ): Promise<AuthTokens> {
     return this.authService.resetTemporaryPassword(
-      getAuthenticatedUserId(request),
+      getAuthenticatedPasswordResetUserId(request),
       dto,
     );
   }
@@ -249,6 +254,24 @@ function getAuthenticatedUserId(request: RequestWithAuth): string {
   if (!request.user) {
     throw new Error(
       'request.user was not set -- protect this route with AccessTokenGuard.',
+    );
+  }
+  return request.user.userId;
+}
+
+/**
+ * `PasswordResetTokenGuard` always runs before `resetTemporaryPassword` and
+ * always sets `request.user` on success (or throws) -- mirrors
+ * `getAuthenticatedUserId` above, but narrowed to
+ * `RequestWithPasswordResetAuth` (a `PasswordResetTokenPayload`, not a full
+ * `AccessTokenPayload`).
+ */
+function getAuthenticatedPasswordResetUserId(
+  request: RequestWithPasswordResetAuth,
+): string {
+  if (!request.user) {
+    throw new Error(
+      'request.user was not set -- protect this route with PasswordResetTokenGuard.',
     );
   }
   return request.user.userId;

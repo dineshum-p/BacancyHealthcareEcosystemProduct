@@ -261,6 +261,34 @@ describe('BAC-49: forced temporary-password reset', () => {
       .expect(400);
   });
 
+  it('SECURITY: the passwordResetRequired token is rejected on an unrelated AccessTokenGuard route (GET /auth/roles), not just accepted on the reset endpoint', async () => {
+    const superAdminToken = await superAdminAccessToken(
+      tenants.tenantB.slug,
+      tenants.tenantB.ownerEmail as string,
+    );
+    const { email, temporaryPassword } = await createProviderAccount(
+      tenants.tenantB.slug,
+      superAdminToken,
+    );
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set('X-Tenant-Id', tenants.tenantB.slug)
+      .send({ email, password: temporaryPassword })
+      .expect(200);
+    const { accessToken: restrictedAccessToken } =
+      loginResponse.body as PasswordResetRequiredChallenge;
+
+    // Must NOT be usable as a general Bearer credential against any other
+    // AccessTokenGuard-protected route -- only against
+    // POST /auth/reset-temporary-password.
+    await request(app.getHttpServer())
+      .get('/auth/roles')
+      .set('X-Tenant-Id', tenants.tenantB.slug)
+      .set('Authorization', `Bearer ${restrictedAccessToken}`)
+      .expect(401);
+  });
+
   it('AC3: an ordinary (non-mustResetPassword) account logs in unchanged, with a full token pair', async () => {
     const email = uniqueEmail();
     const password = 'super-secret-1';

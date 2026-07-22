@@ -15,6 +15,8 @@ import { RefreshTokensRepository } from './refresh-tokens.repository';
 import { MfaRecoveryCodesRepository } from './mfa-recovery-codes.repository';
 import { AccessTokenService } from './access-token.service';
 import { AccessTokenGuard } from './access-token.guard';
+import { PasswordResetTokenService } from './password-reset-token.service';
+import { PasswordResetTokenGuard } from './password-reset-token.guard';
 import { PermissionsGuard } from './permissions.guard';
 import { InternalServiceGuard } from './internal-service.guard';
 import { MfaChallengeTokenService } from './mfa-challenge-token.service';
@@ -59,6 +61,8 @@ import { AuthSchemaProvisioner } from './auth-schema.provisioner';
     MfaRecoveryCodesRepository,
     AccessTokenService,
     AccessTokenGuard,
+    PasswordResetTokenService,
+    PasswordResetTokenGuard,
     PermissionsGuard,
     InternalServiceGuard,
     MfaChallengeTokenService,

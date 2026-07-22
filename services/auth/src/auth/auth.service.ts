@@ -24,6 +24,7 @@ import {
   MfaChallengePayload,
   MfaChallengeTokenService,
 } from './mfa-challenge-token.service';
+import { PasswordResetTokenService } from './password-reset-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { DEFAULT_REGISTRATION_ROLE, UserRole } from './user-role.enum';
@@ -112,6 +113,7 @@ export class AuthService {
     private readonly mfaRecoveryCodesRepository: MfaRecoveryCodesRepository,
     private readonly accessTokenService: AccessTokenService,
     private readonly mfaChallengeTokenService: MfaChallengeTokenService,
+    private readonly passwordResetTokenService: PasswordResetTokenService,
     private readonly authSchemaProvisioner: AuthSchemaProvisioner,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -409,21 +411,22 @@ export class AuthService {
    * challenge (MFA) always takes priority over this one if a future ticket
    * ever makes both reachable simultaneously.
    *
-   * Deliberately reuses `accessTokenService.sign` unchanged (the SAME
-   * `AccessTokenPayload`/secret every other login uses) rather than minting
-   * a distinct-purpose challenge token like BAC-6's `MfaChallengeTokenService`
-   * -- see `PasswordResetRequiredChallenge`'s doc comment (`@hep/shared-types`)
-   * for why: `POST /auth/reset-temporary-password` is guarded by the SAME
-   * `AccessTokenGuard` as every other authenticated route (BAC-49, AC4
-   * mirrors that guard's existing 401 behaviour exactly), so the token
-   * handed back here must already be one `AccessTokenGuard` accepts. What
-   * makes this NOT "a normal, fully-usable" login is the absence of a
-   * `refreshToken`: no `refresh_tokens` row is created, so this access
-   * token's own (short) TTL is the entire lifetime of this pre-reset
-   * session -- once it expires, the caller must log in again, not silently
-   * refresh an unreset account forever. This does not further restrict
-   * that token to ONLY the reset endpoint (a documented scope limit, not an
-   * oversight -- see `AuthController.resetTemporaryPassword`'s doc comment).
+   * Mints a distinct-purpose, narrowly-scoped credential via
+   * `PasswordResetTokenService` -- mirroring BAC-6's
+   * `MfaChallengeTokenService` pattern for the same class of problem (a
+   * caller who is not yet "fully" authenticated and may only call one
+   * specific follow-up endpoint) -- rather than reusing
+   * `accessTokenService.sign`/the normal `AccessTokenPayload` unchanged.
+   * `POST /auth/reset-temporary-password` is guarded by `PasswordResetTokenGuard`
+   * (NOT `AccessTokenGuard`), which is the only thing that verifies this
+   * token; `AccessTokenGuard` (and therefore `PermissionsGuard`, and every
+   * other authenticated route in the service) rejects it outright, since it
+   * is signed with a cryptographically distinct secret and carries no valid
+   * `AccessTokenPayload`. What ALSO makes this NOT "a normal, fully-usable"
+   * login is the absence of a `refreshToken`: no `refresh_tokens` row is
+   * created, so this token's own (short) TTL is the entire lifetime of this
+   * pre-reset session -- once it expires, the caller must log in again, not
+   * silently refresh an unreset account forever.
    */
   async login(dto: LoginDto): Promise<LoginResult> {
     await this.ensureSchema();
@@ -448,9 +451,11 @@ export class AuthService {
     }
 
     if (user.mustResetPassword) {
-      const { token: accessToken, expiresIn } = this.accessTokenService.sign(
-        this.buildPayload(user),
-      );
+      const { token: accessToken, expiresIn } =
+        this.passwordResetTokenService.sign(
+          user.id,
+          this.tenantContext.getTenant().id,
+        );
       return { passwordResetRequired: true, accessToken, expiresIn };
     }
 
@@ -459,11 +464,12 @@ export class AuthService {
 
   /**
    * BAC-49, AC2: completes the forced-reset flow for an authenticated caller
-   * (identified by `AccessTokenGuard` via `POST /auth/reset-temporary-password`'s
-   * Bearer token -- see `AuthController.resetTemporaryPassword`'s doc
-   * comment for why this endpoint is guarded exactly like `enrollMfa`/
-   * `verifyMfaEnrollment` rather than taking a body-based challenge token
-   * like BAC-6's `completeMfaLogin`). Requires the caller to prove they know
+   * (identified by `PasswordResetTokenGuard` via `POST
+   * /auth/reset-temporary-password`'s Bearer token -- see
+   * `AuthController.resetTemporaryPassword`'s doc comment for why this
+   * endpoint is guarded by its own narrowly-scoped guard rather than the
+   * general `AccessTokenGuard`, or a body-based challenge token like BAC-6's
+   * `completeMfaLogin`). Requires the caller to prove they know
    * their CURRENT (temporary) password -- not just hold a valid access
    * token -- before a new one is accepted, the same "prove you have the old
    * secret" precedent a self-service password-change flow needs even though

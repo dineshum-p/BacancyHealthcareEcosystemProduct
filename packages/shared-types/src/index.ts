@@ -215,14 +215,18 @@ export interface MfaChallenge {
  * temporary password). The email/password ARE correct -- this is not a
  * failed login -- but a normal, fully-usable access/refresh token PAIR is
  * withheld until `POST /auth/reset-temporary-password` completes.
- * `accessToken` is a real, `AccessTokenGuard`-verifiable token signed the
- * same way as any other login's (so it can be used as a normal
- * `Authorization: Bearer` header against that ONE reset endpoint, mirroring
- * every other authenticated route's convention instead of inventing a
- * separate challenge-token verification path like BAC-6's
- * `MfaChallengeToken`) -- but deliberately NO `refreshToken` is issued
- * alongside it: once this access token's short TTL expires, the caller must
- * log in again rather than silently refresh an unreset session forever.
+ * `accessToken` here is NOT an `AccessTokenGuard`-verifiable token: it is a
+ * distinct, narrowly-scoped credential (`PasswordResetTokenService`,
+ * mirroring BAC-6's `MfaChallengeToken` pattern) that ONLY
+ * `POST /auth/reset-temporary-password`'s own guard
+ * (`PasswordResetTokenGuard`) accepts -- `AccessTokenGuard`, and therefore
+ * every OTHER authenticated route in the service, rejects it outright. It is
+ * still sent the same `Authorization: Bearer` way every other authenticated
+ * route expects (rather than a body-based challenge token), it just isn't
+ * usable anywhere except that one endpoint. Deliberately NO `refreshToken`
+ * is issued alongside it: once this token's short TTL expires, the caller
+ * must log in again rather than silently refresh an unreset session
+ * forever.
  */
 export interface PasswordResetRequiredChallenge {
   passwordResetRequired: true;

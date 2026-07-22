@@ -14,6 +14,7 @@ import { RefreshTokensRepository } from './refresh-tokens.repository';
 import { MfaRecoveryCodesRepository } from './mfa-recovery-codes.repository';
 import { AccessTokenService } from './access-token.service';
 import { MfaChallengeTokenService } from './mfa-challenge-token.service';
+import { PasswordResetTokenService } from './password-reset-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { TenantStatus } from '../tenants/tenant-status.enum';
@@ -60,6 +61,7 @@ describe('AuthService', () => {
   let mfaRecoveryCodesRepository: jest.Mocked<MfaRecoveryCodesRepository>;
   let accessTokenService: jest.Mocked<AccessTokenService>;
   let mfaChallengeTokenService: jest.Mocked<MfaChallengeTokenService>;
+  let passwordResetTokenService: jest.Mocked<PasswordResetTokenService>;
   let authSchemaProvisioner: jest.Mocked<AuthSchemaProvisioner>;
   let tenantContext: jest.Mocked<TenantContextService>;
   let service: AuthService;
@@ -107,6 +109,12 @@ describe('AuthService', () => {
       sign: jest.fn().mockReturnValue('challenge.jwt.token'),
       verify: jest.fn(),
     } as unknown as jest.Mocked<MfaChallengeTokenService>;
+    passwordResetTokenService = {
+      sign: jest
+        .fn()
+        .mockReturnValue({ token: 'reset.jwt.token', expiresIn: 900 }),
+      verify: jest.fn(),
+    } as unknown as jest.Mocked<PasswordResetTokenService>;
     authSchemaProvisioner = {
       ensureProvisioned: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<AuthSchemaProvisioner>;
@@ -120,6 +128,7 @@ describe('AuthService', () => {
       mfaRecoveryCodesRepository,
       accessTokenService,
       mfaChallengeTokenService,
+      passwordResetTokenService,
       authSchemaProvisioner,
       tenantContext,
     );
@@ -1183,18 +1192,21 @@ describe('AuthService', () => {
 
       expect(result).toEqual({
         passwordResetRequired: true,
-        accessToken: 'signed.jwt.token',
+        accessToken: 'reset.jwt.token',
         expiresIn: 900,
       });
       expect(result).not.toHaveProperty('refreshToken');
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
       expect(refreshTokensRepository.create).not.toHaveBeenCalled();
+      // BAC-49 fix: a distinct, narrowly-scoped token is minted -- NOT a
+      // normal AccessTokenPayload via accessTokenService.
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
-      expect(accessTokenService.sign).toHaveBeenCalledWith({
-        userId: 'user-1',
-        tenantId: 'tenant-1',
-        role: UserRole.STAFF,
-      });
+      expect(passwordResetTokenService.sign).toHaveBeenCalledWith(
+        'user-1',
+        'tenant-1',
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(accessTokenService.sign).not.toHaveBeenCalled();
     });
 
     it('still rejects a wrong password with the uniform 401, never reaching the reset-required branch', async () => {
@@ -1208,6 +1220,8 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
       // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
       expect(accessTokenService.sign).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(passwordResetTokenService.sign).not.toHaveBeenCalled();
     });
 
     it('issues a normal full token pair (no regression) once mustResetPassword is false (AC3)', async () => {
