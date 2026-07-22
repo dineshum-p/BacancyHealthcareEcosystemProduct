@@ -9,6 +9,7 @@ import type {
   AccessTokenPayload,
   AccessTokenResponse,
   AuthTokens,
+  CreateProviderAccountResponse,
   LoginResult,
   MfaActivation,
   MfaEnrollment,
@@ -50,7 +51,9 @@ import { RefreshDto } from './dto/refresh.dto';
 import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
 import { AdminSeedDto } from './dto/admin-seed.dto';
+import { CreateProviderAccountDto } from './dto/create-provider-account.dto';
 import { resolveSeedAdminPassword } from './seed-admin-password.util';
+import { generateRandomPassword } from './random-password.util';
 
 /** Uniform message for every credential-related failure (AC3). */
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.';
@@ -262,6 +265,75 @@ export class AuthService {
         role: UserRole.CLINIC_ADMIN,
       });
       return this.toRegisteredUser(user);
+    } catch (error) {
+      if (error instanceof EmailAlreadyExistsError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * BAC-48: a `clinic_admin`/`super_admin` creates a new `provider` (doctor)
+   * login account directly, via `POST /auth/users` -- NOT a reuse of
+   * `register()` or `seedClinicAdmin()`. Distinct from both:
+   *
+   *   1. `register()` is self-service (the registrant chooses their own
+   *      password up-front) and its role assignment is a fixed bootstrap
+   *      rule (owner-email -> `SUPER_ADMIN`, everyone else -> `STAFF`); it
+   *      has no way to produce a `PROVIDER` account, nor to collect this
+   *      endpoint's "core identity" fields (name/DOB/gender/phone/address).
+   *   2. `seedClinicAdmin()` is the closest precedent (also an admin-invite
+   *      flow with a server-generated password, via
+   *      `generateRandomPassword`/`hashPassword` -- reused here exactly the
+   *      same way) but is hardcoded to `CLINIC_ADMIN` and collects only an
+   *      email; this collects a full identity and always assigns `PROVIDER`.
+   *
+   * The raw `temporaryPassword` is returned to the caller ONCE, in this
+   * response only (AC5) -- never logged, never persisted in plaintext (only
+   * its Argon2 hash, via `hashPassword`, is) -- so the calling admin UI can
+   * hand it off to the doctor out-of-band; no email/notification delivery
+   * infrastructure exists in this codebase to send it automatically.
+   * `mustResetPassword` is always persisted `true`: BAC-49 (a separate,
+   * out-of-scope ticket) is what will actually enforce a forced reset on the
+   * doctor's first login.
+   *
+   * Duplicate-email handling mirrors `register()`/`seedClinicAdmin()`
+   * exactly (409, via `EmailAlreadyExistsError`) -- checked within the
+   * caller's own tenant, same as every other registration path here.
+   */
+  async createProviderAccount(
+    dto: CreateProviderAccountDto,
+  ): Promise<CreateProviderAccountResponse> {
+    await this.ensureSchema();
+    const email = normalizeEmail(dto.email);
+    const temporaryPassword = generateRandomPassword();
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    try {
+      const user = await this.usersRepository.create({
+        id: randomUUID(),
+        email,
+        passwordHash,
+        role: UserRole.PROVIDER,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        dateOfBirth: dto.dateOfBirth,
+        gender: dto.gender,
+        phone: dto.phone,
+        address: dto.address,
+        mustResetPassword: true,
+      });
+      return {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        createdAt: user.createdAt.toISOString(),
+        mustResetPassword: user.mustResetPassword,
+        temporaryPassword,
+      };
     } catch (error) {
       if (error instanceof EmailAlreadyExistsError) {
         throw new ConflictException(error.message);

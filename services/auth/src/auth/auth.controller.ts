@@ -14,6 +14,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import type {
   AccessTokenResponse,
   AuthTokens,
+  CreateProviderAccountResponse,
   LoginResult,
   MfaActivation,
   MfaEnrollment,
@@ -35,6 +36,7 @@ import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { AdminSeedDto } from './dto/admin-seed.dto';
+import { CreateProviderAccountDto } from './dto/create-provider-account.dto';
 import type { RequestWithAuth } from './request-with-auth.interface';
 
 /**
@@ -174,6 +176,30 @@ export class AuthController {
     @Body() dto: UpdateUserRoleDto,
   ): Promise<RegisteredUser> {
     return this.authService.updateUserRole(id, dto.role);
+  }
+
+  /**
+   * BAC-48: admin-only, direct account-creation endpoint -- a `clinic_admin`/
+   * `super_admin` creates a new PROVIDER (doctor) login account in one step,
+   * skipping self-registration entirely (there is otherwise NO path that
+   * ever assigns `role: 'provider'`). Guarded by `AccessTokenGuard` +
+   * `PermissionsGuard` requiring `CREATE_STAFF_ACCOUNT` (403 for
+   * `provider`/`staff`/`patient` callers and any unauthenticated caller),
+   * same guard-ordering convention as `updateUserRole`.
+   * `CreateProviderAccountDto`'s `@IsIn([UserRole.PROVIDER])` on `role`
+   * rejects (400) any other role value before this ever reaches
+   * `AuthService` -- this endpoint is deliberately scoped to provisioning
+   * `provider` accounts only, not a general "create any role" door (see
+   * `AuthService.createProviderAccount`'s doc comment).
+   */
+  @Post('users')
+  @UseGuards(AccessTokenGuard, PermissionsGuard)
+  @RequirePermissions(Permission.CREATE_STAFF_ACCOUNT)
+  @HttpCode(HttpStatus.CREATED)
+  createProviderAccount(
+    @Body() dto: CreateProviderAccountDto,
+  ): Promise<CreateProviderAccountResponse> {
+    return this.authService.createProviderAccount(dto);
   }
 }
 

@@ -24,14 +24,22 @@ import { Permission } from './permission.enum';
  *   This ticket adds the role and its (empty) entry here only; a later
  *   ticket can layer narrow, self-scoped permissions on top if this
  *   service ever gains a patient-owned resource of its own.
+ * - `CREATE_STAFF_ACCOUNT` (BAC-48) is granted to `SUPER_ADMIN` and
+ *   `CLINIC_ADMIN` only, mirroring `MANAGE_USER_ROLES`'s grant exactly:
+ *   `PROVIDER`/`STAFF`/`PATIENT` all get 403 from `POST /auth/users`.
  */
 export const ROLE_PERMISSIONS: Readonly<
   Record<UserRole, readonly Permission[]>
 > = {
-  [UserRole.SUPER_ADMIN]: [Permission.MANAGE_USER_ROLES, Permission.VIEW_USERS],
+  [UserRole.SUPER_ADMIN]: [
+    Permission.MANAGE_USER_ROLES,
+    Permission.VIEW_USERS,
+    Permission.CREATE_STAFF_ACCOUNT,
+  ],
   [UserRole.CLINIC_ADMIN]: [
     Permission.MANAGE_USER_ROLES,
     Permission.VIEW_USERS,
+    Permission.CREATE_STAFF_ACCOUNT,
   ],
   [UserRole.PROVIDER]: [Permission.VIEW_USERS],
   [UserRole.STAFF]: [Permission.VIEW_USERS],

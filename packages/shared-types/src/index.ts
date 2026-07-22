@@ -47,6 +47,10 @@ export type UserRole =
  * is front-desk intake data entry, not clinical documentation authorship or
  * core legal-identity authoring), and for how `'patient'` (BAC-41) is granted
  * both, narrowly self-scoped via `assertPatientScope`.
+ * `'create_staff_account'` was added by BAC-48 for `services/auth`'s
+ * `POST /auth/users` (a `clinic_admin`/`super_admin`-only, admin-initiated
+ * account-creation endpoint) -- granted to `super_admin`/`clinic_admin`
+ * only, mirroring `'manage_user_roles'`'s existing grant.
  */
 export type Permission =
   | 'manage_user_roles'
@@ -63,7 +67,8 @@ export type Permission =
   | 'create_visit_intake'
   | 'read_visit_intake_queue'
   | 'read_visit_intake'
-  | 'link_visit_intake';
+  | 'link_visit_intake'
+  | 'create_staff_account';
 
 /** One entry of `GET /auth/roles`'s response body (BAC-7, AC1). */
 export interface RoleDefinition {
@@ -102,6 +107,53 @@ export interface RegisteredUser {
   email: string;
   role: UserRole;
   createdAt: string;
+}
+
+/**
+ * `services/auth` (BAC-48). Request body for `POST /auth/users`: the
+ * admin-only, direct account-creation endpoint a `clinic_admin`/
+ * `super_admin` uses to create a new PROVIDER (doctor) login account in one
+ * step, skipping self-registration entirely -- see
+ * `AuthService.createProviderAccount`'s doc comment for why this is a
+ * distinct method from `register()`/`seedClinicAdmin()`. Collects the "core
+ * identity" fields needed to stand up a schedulable doctor (unlike
+ * `RegisterDto`, which collects only credentials). `role` is deliberately
+ * part of the body (not implied by the route) but its value MUST be
+ * `'provider'` -- validated by `CreateProviderAccountDto`'s `@IsIn` -- so this
+ * endpoint can never be used to mint a new `clinic_admin`/`super_admin`
+ * account (a 400, not a 403, for any other role value).
+ */
+export interface CreateProviderAccountRequest {
+  firstName: string;
+  lastName: string;
+  /** ISO-8601 date (`YYYY-MM-DD`), no time component. */
+  dateOfBirth: string;
+  gender: PatientGender;
+  email: string;
+  phone: string;
+  address: string;
+  role: 'provider';
+}
+
+/**
+ * Response body for `POST /auth/users` (BAC-48). `temporaryPassword` is the
+ * raw, system-generated password -- returned ONCE, in this response only, so
+ * the calling admin UI can display it for hand-off to the doctor
+ * out-of-band (no email/notification delivery infrastructure exists in this
+ * codebase, see `AuthService.createProviderAccount`'s doc comment); it is
+ * never logged and never persisted in plaintext, only its Argon2 hash is.
+ * `mustResetPassword` is always `true` here -- BAC-49 (a separate ticket) is
+ * what will actually enforce a forced reset on the doctor's first login.
+ */
+export interface CreateProviderAccountResponse {
+  id: string;
+  email: string;
+  role: UserRole;
+  firstName: string;
+  lastName: string;
+  createdAt: string;
+  mustResetPassword: boolean;
+  temporaryPassword: string;
 }
 
 /** Response body for `POST /auth/login` (BAC-5, AC2). */

@@ -54,6 +54,10 @@ describe('UsersRepository', () => {
         first_name TEXT NULL,
         last_name TEXT NULL,
         date_of_birth DATE NULL,
+        gender TEXT NULL,
+        phone TEXT NULL,
+        address TEXT NULL,
+        must_reset_password BOOLEAN NOT NULL DEFAULT false,
         UNIQUE (email)
       )
     `);
@@ -235,6 +239,59 @@ describe('UsersRepository', () => {
         firstName: null,
         lastName: null,
         dateOfBirth: null,
+      });
+    });
+  });
+
+  describe('provider account fields (BAC-48)', () => {
+    it('persists gender/phone/address/mustResetPassword when creating a provider account', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'doctor@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.PROVIDER,
+        firstName: 'Grace',
+        lastName: 'Hopper',
+        dateOfBirth: '1980-01-15',
+        gender: 'female',
+        phone: '+1-555-0100',
+        address: '1 Infinite Loop',
+        mustResetPassword: true,
+      });
+
+      expect(created).toMatchObject({
+        role: UserRole.PROVIDER,
+        gender: 'female',
+        phone: '+1-555-0100',
+        address: '1 Infinite Loop',
+        mustResetPassword: true,
+      });
+
+      const found = await repository.findByEmail('doctor@example.com');
+      expect(found).toEqual(created);
+    });
+
+    it('defaults gender/phone/address to null and mustResetPassword to false for an ordinary registration', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'staffer2@example.com',
+        passwordHash: 'argon2-hash',
+        role: UserRole.STAFF,
+      });
+
+      expect(created).toMatchObject({
+        gender: null,
+        phone: null,
+        address: null,
+        mustResetPassword: false,
       });
     });
   });

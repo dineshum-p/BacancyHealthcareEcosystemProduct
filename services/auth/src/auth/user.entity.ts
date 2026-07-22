@@ -1,3 +1,4 @@
+import type { PatientGender } from '@hep/shared-types';
 import { UserRole } from './user-role.enum';
 import { MfaStatus } from './mfa-status.enum';
 
@@ -41,4 +42,24 @@ export interface User {
   lastName: string | null;
   /** ISO-8601 date (`YYYY-MM-DD`), or `null` -- see `firstName`'s doc comment. */
   dateOfBirth: string | null;
+  /**
+   * BAC-48: the "core identity" fields collected when a `clinic_admin`/
+   * `super_admin` creates a `provider` (doctor) account directly via
+   * `POST /auth/users`. `null` for every OTHER registration path -- like
+   * `firstName`/`lastName`/`dateOfBirth` above, these columns live on the
+   * shared `users` table rather than a separate table purely to avoid one
+   * for three optional fields.
+   */
+  gender: PatientGender | null;
+  phone: string | null;
+  address: string | null;
+  /**
+   * BAC-48: `true` for a `provider` account created via `POST /auth/users`
+   * (a system-generated temporary password the doctor never chose) --
+   * `false` for every self-service registration path, where the caller
+   * already chose their own password. Enforcing an actual forced reset on
+   * first login is BAC-49's (a separate ticket's) job; this column only
+   * persists the flag.
+   */
+  mustResetPassword: boolean;
 }

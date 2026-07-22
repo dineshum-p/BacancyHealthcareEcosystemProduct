@@ -42,6 +42,10 @@ function makeUser(overrides: Partial<User> = {}): User {
     firstName: null,
     lastName: null,
     dateOfBirth: null,
+    gender: null,
+    phone: null,
+    address: null,
+    mustResetPassword: false,
     ...overrides,
   };
 }
@@ -494,6 +498,119 @@ describe('AuthService', () => {
       usersRepository.create.mockRejectedValue(new Error('db unreachable'));
 
       await expect(service.seedClinicAdmin(dto)).rejects.toThrow(
+        'db unreachable',
+      );
+    });
+  });
+
+  describe('createProviderAccount (BAC-48)', () => {
+    const dto = {
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      dateOfBirth: '1980-01-15',
+      gender: 'female' as const,
+      email: 'New.Doctor@Example.com',
+      phone: '+1-555-0100',
+      address: '1 Infinite Loop',
+      role: 'provider' as const,
+    };
+
+    it('provisions the tenant schema before creating the user', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.createProviderAccount(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(authSchemaProvisioner.ensureProvisioned).toHaveBeenCalledWith(
+        'tenant_acme',
+      );
+    });
+
+    it('normalizes the email, always assigns the provider role, and persists the identity fields', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.createProviderAccount(dto);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new.doctor@example.com',
+          role: UserRole.PROVIDER,
+          firstName: 'Grace',
+          lastName: 'Hopper',
+          dateOfBirth: '1980-01-15',
+          gender: 'female',
+          phone: '+1-555-0100',
+          address: '1 Infinite Loop',
+          mustResetPassword: true,
+        }),
+      );
+    });
+
+    it('stores an argon2 hash of a system-generated temporary password, never a caller-supplied one', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      await service.createProviderAccount(dto);
+
+      const [createArg] = usersRepository.create.mock.calls[0];
+      expect(createArg.passwordHash.startsWith('$argon2')).toBe(true);
+    });
+
+    it('returns the raw temporary password exactly once, and it verifies against the stored hash', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      const result = await service.createProviderAccount(dto);
+
+      expect(typeof result.temporaryPassword).toBe('string');
+      expect(result.temporaryPassword.length).toBeGreaterThanOrEqual(32);
+      const [createArg] = usersRepository.create.mock.calls[0];
+      await expect(
+        verifyPassword(createArg.passwordHash, result.temporaryPassword),
+      ).resolves.toBe(true);
+    });
+
+    it('sets mustResetPassword: true on the response', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      const result = await service.createProviderAccount(dto);
+
+      expect(result.mustResetPassword).toBe(true);
+    });
+
+    it('never returns the password hash', async () => {
+      usersRepository.create.mockImplementation((user) =>
+        Promise.resolve(makeUser({ ...user, createdAt: new Date() })),
+      );
+
+      const result = await service.createProviderAccount(dto);
+
+      expect(result).not.toHaveProperty('passwordHash');
+    });
+
+    it('translates a duplicate email into ConflictException (409)', async () => {
+      usersRepository.create.mockRejectedValue(
+        new EmailAlreadyExistsError('new.doctor@example.com'),
+      );
+
+      await expect(service.createProviderAccount(dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('propagates unrelated repository errors unchanged', async () => {
+      usersRepository.create.mockRejectedValue(new Error('db unreachable'));
+
+      await expect(service.createProviderAccount(dto)).rejects.toThrow(
         'db unreachable',
       );
     });
