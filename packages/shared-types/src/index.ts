@@ -208,8 +208,56 @@ export interface MfaChallenge {
   mfaChallengeToken: string;
 }
 
-/** `POST /auth/login`'s response is one of these two shapes (BAC-6, AC3). */
-export type LoginResult = AuthTokens | MfaChallenge;
+/**
+ * Returned by `POST /auth/login` (BAC-49) instead of `AuthTokens` when the
+ * authenticating account has `mustResetPassword: true` (BAC-48, e.g. a
+ * doctor account a `clinic_admin` just created with a system-generated
+ * temporary password). The email/password ARE correct -- this is not a
+ * failed login -- but a normal, fully-usable access/refresh token PAIR is
+ * withheld until `POST /auth/reset-temporary-password` completes.
+ * `accessToken` here is NOT an `AccessTokenGuard`-verifiable token: it is a
+ * distinct, narrowly-scoped credential (`PasswordResetTokenService`,
+ * mirroring BAC-6's `MfaChallengeToken` pattern) that ONLY
+ * `POST /auth/reset-temporary-password`'s own guard
+ * (`PasswordResetTokenGuard`) accepts -- `AccessTokenGuard`, and therefore
+ * every OTHER authenticated route in the service, rejects it outright. It is
+ * still sent the same `Authorization: Bearer` way every other authenticated
+ * route expects (rather than a body-based challenge token), it just isn't
+ * usable anywhere except that one endpoint. Deliberately NO `refreshToken`
+ * is issued alongside it: once this token's short TTL expires, the caller
+ * must log in again rather than silently refresh an unreset session
+ * forever.
+ */
+export interface PasswordResetRequiredChallenge {
+  passwordResetRequired: true;
+  accessToken: string;
+  /** Access token lifetime, in seconds. */
+  expiresIn: number;
+}
+
+/**
+ * `POST /auth/login`'s response is one of these three shapes (BAC-6 AC3;
+ * BAC-49 AC1 adds `PasswordResetRequiredChallenge`).
+ */
+export type LoginResult =
+  | AuthTokens
+  | MfaChallenge
+  | PasswordResetRequiredChallenge;
+
+/**
+ * Request body for `POST /auth/reset-temporary-password` (BAC-49): the
+ * authenticated caller (identified by their Bearer access token, exactly
+ * like `POST /auth/mfa/enroll`/`verify` -- never by anything in this body)
+ * proves they know their CURRENT password and chooses a new one, meeting the
+ * same password policy `POST /auth/register` already enforces
+ * (`RegisterDto`'s `@MinLength(8)`/`@MaxLength(200)`). On success, their
+ * account's `mustResetPassword` flips to `false` and a normal `AuthTokens`
+ * pair is issued (see `AuthService.resetTemporaryPassword`'s doc comment).
+ */
+export interface ResetTemporaryPasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
 
 /**
  * `services/notification` (BAC-9). Channels a notification can be dispatched

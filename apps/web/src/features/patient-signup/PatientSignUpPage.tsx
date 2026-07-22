@@ -63,7 +63,15 @@ export function PatientSignUpPage({
           { tenantId, email, password },
           {
             onSuccess: (result) => {
-              if ("mfaRequired" in result) {
+              // BAC-49 added a third `LoginResult` shape
+              // (`PasswordResetRequiredChallenge`) that, like `MfaChallenge`,
+              // is not a complete `AuthTokens` pair -- a freshly
+              // self-registered patient account never has
+              // `mustResetPassword: true` (that only applies to BAC-48's
+              // admin-provisioned provider accounts), so this falls back to
+              // the same "please sign in manually" state already used for
+              // any other non-token outcome here.
+              if ("mfaRequired" in result || "passwordResetRequired" in result) {
                 setNeedsManualSignIn(true);
               } else {
                 completeLoginAndRedirect(result);

@@ -10,6 +10,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UserRole } from './user-role.enum';
 import { RequestWithAuth } from './request-with-auth.interface';
+import { RequestWithPasswordResetAuth } from './request-with-password-reset-auth.interface';
 
 describe('AuthController', () => {
   let service: jest.Mocked<AuthService>;
@@ -28,6 +29,7 @@ describe('AuthController', () => {
       updateUserRole: jest.fn(),
       seedClinicAdmin: jest.fn(),
       createProviderAccount: jest.fn(),
+      resetTemporaryPassword: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
     controller = new AuthController(service);
   });
@@ -109,6 +111,26 @@ describe('AuthController', () => {
     return {
       user: { userId, tenantId: 'tenant-1', role: UserRole.STAFF },
     } as unknown as RequestWithAuth;
+  }
+
+  /**
+   * BAC-49 fix: `resetTemporaryPassword` is guarded by
+   * `PasswordResetTokenGuard`, not `AccessTokenGuard` -- its `request.user`
+   * is a `PasswordResetTokenPayload` (`userId`/`tenantId`/`purpose`), NOT a
+   * full `AccessTokenPayload` (no `role`). Deliberately a DIFFERENT shape
+   * from `makeAuthenticatedRequest` above, to keep this test honest about
+   * what the guard actually populates.
+   */
+  function makePasswordResetAuthenticatedRequest(
+    userId: string,
+  ): RequestWithPasswordResetAuth {
+    return {
+      user: {
+        userId,
+        tenantId: 'tenant-1',
+        purpose: 'password-reset-required',
+      },
+    } as unknown as RequestWithPasswordResetAuth;
   }
 
   it('delegates mfa/enroll to the service using the authenticated user id', async () => {
@@ -234,5 +256,51 @@ describe('AuthController', () => {
     await expect(controller.createProviderAccount(dto)).resolves.toBe(created);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
     expect(service.createProviderAccount).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates POST /auth/reset-temporary-password to the service using the authenticated user id and the dto (BAC-49)', async () => {
+    const dto = {
+      currentPassword: 'old-temp-password',
+      newPassword: 'brand-new-password-1',
+    };
+    const tokens: AuthTokens = {
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 900,
+    };
+    service.resetTemporaryPassword.mockResolvedValue(tokens);
+
+    await expect(
+      controller.resetTemporaryPassword(
+        makePasswordResetAuthenticatedRequest('user-1'),
+        dto,
+      ),
+    ).resolves.toBe(tokens);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.resetTemporaryPassword).toHaveBeenCalledWith('user-1', dto);
+  });
+
+  it('reset-temporary-password throws if PasswordResetTokenGuard did not populate request.user', () => {
+    const request = {} as RequestWithPasswordResetAuth;
+    const dto = { currentPassword: 'old', newPassword: 'brand-new-password-1' };
+
+    expect(() => controller.resetTemporaryPassword(request, dto)).toThrow();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.resetTemporaryPassword).not.toHaveBeenCalled();
+  });
+
+  it('returns a passwordResetRequired challenge from login when the service reports one (BAC-49)', async () => {
+    const dto = { email: 'grace.hopper@example.com', password: 'temp-pass' };
+    service.login.mockResolvedValue({
+      passwordResetRequired: true,
+      accessToken: 'restricted.access.token',
+      expiresIn: 900,
+    });
+
+    await expect(controller.login(dto)).resolves.toEqual({
+      passwordResetRequired: true,
+      accessToken: 'restricted.access.token',
+      expiresIn: 900,
+    });
   });
 });

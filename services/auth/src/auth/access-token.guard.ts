@@ -55,7 +55,10 @@ export class AccessTokenGuard implements CanActivate {
   }
 }
 
-function extractBearerToken(authorizationHeader?: string): string | null {
+/** Shared with `PasswordResetTokenGuard` -- both parse the same `Authorization: Bearer <token>` header convention. */
+export function extractBearerToken(
+  authorizationHeader?: string,
+): string | null {
   if (!authorizationHeader?.startsWith(BEARER_PREFIX)) {
     return null;
   }

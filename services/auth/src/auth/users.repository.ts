@@ -245,6 +245,36 @@ export class UsersRepository {
     return row ? this.toEntity(row) : null;
   }
 
+  /**
+   * BAC-49, AC2: persists a new password hash for a user already known to
+   * belong to the CURRENT tenant (the caller resolves the target user via
+   * `findById`, scoped the same way `updateRole` is -- see that method's doc
+   * comment for why this makes cross-tenant access structurally
+   * impossible), and atomically flips `must_reset_password` to `false` in
+   * the same statement so a caller can never observe a state where the
+   * password changed but the flag did not. Returns the updated `User`, or
+   * `null` if the id no longer exists in this tenant (mirrors `updateRole`'s
+   * same defensive handling).
+   */
+  async resetPassword(
+    userId: string,
+    passwordHash: string,
+  ): Promise<User | null> {
+    const client = await this.tenantContext.getSchemaBoundClient();
+    const schema = quoteSchemaIdentifier(
+      this.tenantContext.getTenant().schemaName,
+    );
+    const result: QueryResult<UserRow> = await client.query(
+      `UPDATE ${schema}.users
+       SET password_hash = $2, must_reset_password = false
+       WHERE id = $1
+       RETURNING ${USER_COLUMNS}`,
+      [userId, passwordHash],
+    );
+    const row = result.rows[0];
+    return row ? this.toEntity(row) : null;
+  }
+
   private toEntity(row: UserRow): User {
     return {
       id: row.id,

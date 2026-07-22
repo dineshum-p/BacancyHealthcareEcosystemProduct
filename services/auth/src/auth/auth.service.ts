@@ -24,6 +24,7 @@ import {
   MfaChallengePayload,
   MfaChallengeTokenService,
 } from './mfa-challenge-token.service';
+import { PasswordResetTokenService } from './password-reset-token.service';
 import { AuthSchemaProvisioner } from './auth-schema.provisioner';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { DEFAULT_REGISTRATION_ROLE, UserRole } from './user-role.enum';
@@ -52,6 +53,7 @@ import { MfaVerifyDto } from './dto/mfa-verify.dto';
 import { MfaLoginVerifyDto } from './dto/mfa-login-verify.dto';
 import { AdminSeedDto } from './dto/admin-seed.dto';
 import { CreateProviderAccountDto } from './dto/create-provider-account.dto';
+import { ResetTemporaryPasswordDto } from './dto/reset-temporary-password.dto';
 import { resolveSeedAdminPassword } from './seed-admin-password.util';
 import { generateRandomPassword } from './random-password.util';
 
@@ -69,6 +71,8 @@ const INVALID_REFRESH_TOKEN_MESSAGE = 'Invalid or expired refresh token.';
 const INVALID_MFA_CODE_MESSAGE = 'Invalid or expired authentication code.';
 /** Uniform message when the authenticated caller's own account vanished mid-request. */
 const ACCOUNT_NOT_FOUND_MESSAGE = 'Invalid or expired access token.';
+/** BAC-49: distinct from `INVALID_CREDENTIALS_MESSAGE` -- this caller IS authenticated (a valid access token), just presenting the wrong CURRENT password to `resetTemporaryPassword`. */
+const INVALID_CURRENT_PASSWORD_MESSAGE = 'Current password is incorrect.';
 /** Distinct from AC4's message: this is a state-conflict, not a bad code. */
 const NO_PENDING_ENROLLMENT_MESSAGE =
   'No pending MFA enrollment for this user.';
@@ -109,6 +113,7 @@ export class AuthService {
     private readonly mfaRecoveryCodesRepository: MfaRecoveryCodesRepository,
     private readonly accessTokenService: AccessTokenService,
     private readonly mfaChallengeTokenService: MfaChallengeTokenService,
+    private readonly passwordResetTokenService: PasswordResetTokenService,
     private readonly authSchemaProvisioner: AuthSchemaProvisioner,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -394,6 +399,34 @@ export class AuthService {
    * an `mfa_required` challenge instead and issues no tokens at all.
    * `POST /auth/mfa/login-verify` (`completeMfaLogin`) exchanges that
    * challenge, plus a valid TOTP code, for real tokens.
+   *
+   * BAC-49, AC1: ALSO withholds a normal, fully-usable access/refresh token
+   * pair when `user.mustResetPassword` is `true` (an admin-provisioned
+   * account -- e.g. BAC-48's `createProviderAccount` -- on its first login
+   * with the system-generated temporary password). Checked AFTER the MFA
+   * branch, not before: a `mustResetPassword` account cannot yet have MFA
+   * `active` in practice (`enrollMfa`/`verifyMfaEnrollment` both require an
+   * already-authenticated caller, which this account has never had), so this
+   * ordering is a no-op today but keeps the precedent that a step-up
+   * challenge (MFA) always takes priority over this one if a future ticket
+   * ever makes both reachable simultaneously.
+   *
+   * Mints a distinct-purpose, narrowly-scoped credential via
+   * `PasswordResetTokenService` -- mirroring BAC-6's
+   * `MfaChallengeTokenService` pattern for the same class of problem (a
+   * caller who is not yet "fully" authenticated and may only call one
+   * specific follow-up endpoint) -- rather than reusing
+   * `accessTokenService.sign`/the normal `AccessTokenPayload` unchanged.
+   * `POST /auth/reset-temporary-password` is guarded by `PasswordResetTokenGuard`
+   * (NOT `AccessTokenGuard`), which is the only thing that verifies this
+   * token; `AccessTokenGuard` (and therefore `PermissionsGuard`, and every
+   * other authenticated route in the service) rejects it outright, since it
+   * is signed with a cryptographically distinct secret and carries no valid
+   * `AccessTokenPayload`. What ALSO makes this NOT "a normal, fully-usable"
+   * login is the absence of a `refreshToken`: no `refresh_tokens` row is
+   * created, so this token's own (short) TTL is the entire lifetime of this
+   * pre-reset session -- once it expires, the caller must log in again, not
+   * silently refresh an unreset account forever.
    */
   async login(dto: LoginDto): Promise<LoginResult> {
     await this.ensureSchema();
@@ -417,7 +450,73 @@ export class AuthService {
       return { mfaRequired: true, mfaChallengeToken };
     }
 
+    if (user.mustResetPassword) {
+      const { token: accessToken, expiresIn } =
+        this.passwordResetTokenService.sign(
+          user.id,
+          this.tenantContext.getTenant().id,
+        );
+      return { passwordResetRequired: true, accessToken, expiresIn };
+    }
+
     return this.issueTokens(user);
+  }
+
+  /**
+   * BAC-49, AC2: completes the forced-reset flow for an authenticated caller
+   * (identified by `PasswordResetTokenGuard` via `POST
+   * /auth/reset-temporary-password`'s Bearer token -- see
+   * `AuthController.resetTemporaryPassword`'s doc comment for why this
+   * endpoint is guarded by its own narrowly-scoped guard rather than the
+   * general `AccessTokenGuard`, or a body-based challenge token like BAC-6's
+   * `completeMfaLogin`). Requires the caller to prove they know
+   * their CURRENT (temporary) password -- not just hold a valid access
+   * token -- before a new one is accepted, the same "prove you have the old
+   * secret" precedent a self-service password-change flow needs even though
+   * no other ticket has built one yet.
+   *
+   * Deliberately does NOT gate on `user.mustResetPassword` still being
+   * `true` (i.e. this also works as a general "change my own password"
+   * endpoint for an account that already completed its reset, or that never
+   * needed one) -- no acceptance criterion says otherwise, and rejecting a
+   * legitimate password change for a `mustResetPassword: false` account
+   * would be an arbitrary restriction this ticket was never asked to build.
+   * `usersRepository.resetPassword` unconditionally sets
+   * `must_reset_password = false`, which is a true no-op for an account
+   * where it was already `false`.
+   *
+   * On success, issues a normal full `AuthTokens` pair via `issueTokens` --
+   * the same "real" tokens a normal `login()` produces, completing the
+   * step-up from `PasswordResetRequiredChallenge`'s restricted-access token.
+   */
+  async resetTemporaryPassword(
+    userId: string,
+    dto: ResetTemporaryPasswordDto,
+  ): Promise<AuthTokens> {
+    await this.ensureSchema();
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException(ACCOUNT_NOT_FOUND_MESSAGE);
+    }
+
+    const currentPasswordValid = await verifyPassword(
+      user.passwordHash,
+      dto.currentPassword,
+    );
+    if (!currentPasswordValid) {
+      throw new UnauthorizedException(INVALID_CURRENT_PASSWORD_MESSAGE);
+    }
+
+    const newPasswordHash = await hashPassword(dto.newPassword);
+    const updated = await this.usersRepository.resetPassword(
+      user.id,
+      newPasswordHash,
+    );
+    if (!updated) {
+      throw new UnauthorizedException(ACCOUNT_NOT_FOUND_MESSAGE);
+    }
+
+    return this.issueTokens(updated);
   }
 
   /**

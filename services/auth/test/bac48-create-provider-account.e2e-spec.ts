@@ -175,11 +175,18 @@ describe('BAC-48: POST /auth/users', () => {
     const created = await request(app.getHttpServer())
       .post('/auth/users')
       .set('X-Tenant-Id', tenants.tenantA.slug)
-      .set('Authorization', `Bearer ${superAdminToken}`)
       .send({ ...validBody, email: uniqueEmail() })
+      .set('Authorization', `Bearer ${superAdminToken}`)
       .expect(201);
     const providerBody = created.body as CreateProviderAccountResponse;
 
+    // BAC-48's account is provisioned with `mustResetPassword: true`
+    // (BAC-49), so its first login returns a `PasswordResetRequiredChallenge`
+    // -- a narrowly-scoped token that only
+    // `POST /auth/reset-temporary-password` accepts (BAC-49's fix), NOT a
+    // normal, fully-usable access token. Complete that reset first to get a
+    // real, `AccessTokenGuard`-verifiable `provider` token before exercising
+    // this (unrelated) `PermissionsGuard` 403 check.
     const providerLogin = await request(app.getHttpServer())
       .post('/auth/login')
       .set('X-Tenant-Id', tenants.tenantA.slug)
@@ -188,7 +195,19 @@ describe('BAC-48: POST /auth/users', () => {
         password: providerBody.temporaryPassword,
       })
       .expect(200);
-    const providerToken = (providerLogin.body as AuthTokens).accessToken;
+    const restrictedToken = (providerLogin.body as { accessToken: string })
+      .accessToken;
+
+    const resetResponse = await request(app.getHttpServer())
+      .post('/auth/reset-temporary-password')
+      .set('X-Tenant-Id', tenants.tenantA.slug)
+      .set('Authorization', `Bearer ${restrictedToken}`)
+      .send({
+        currentPassword: providerBody.temporaryPassword,
+        newPassword: 'brand-new-real-password-1',
+      })
+      .expect(200);
+    const providerToken = (resetResponse.body as AuthTokens).accessToken;
 
     await request(app.getHttpServer())
       .post('/auth/users')

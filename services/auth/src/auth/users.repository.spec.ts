@@ -196,6 +196,47 @@ describe('UsersRepository', () => {
     });
   });
 
+  describe('resetPassword (BAC-49)', () => {
+    it('persists a new password hash and flips mustResetPassword to false', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+      const created = await repository.create({
+        id: randomUUID(),
+        email: 'grace@example.com',
+        passwordHash: 'old-temp-hash',
+        role: UserRole.PROVIDER,
+        mustResetPassword: true,
+      });
+
+      const updated = await repository.resetPassword(
+        created.id,
+        'new-real-hash',
+      );
+
+      expect(updated).toMatchObject({
+        id: created.id,
+        passwordHash: 'new-real-hash',
+        mustResetPassword: false,
+      });
+      const found = await repository.findById(created.id);
+      expect(found).toMatchObject({
+        passwordHash: 'new-real-hash',
+        mustResetPassword: false,
+      });
+    });
+
+    it('returns null when the user id does not exist in this tenant', async () => {
+      const repository = new UsersRepository(
+        makeFakeTenantContext(pool, tenant),
+      );
+
+      await expect(
+        repository.resetPassword(randomUUID(), 'new-hash'),
+      ).resolves.toBeNull();
+    });
+  });
+
   describe('patient identity fields (BAC-42)', () => {
     it('persists firstName/lastName/dateOfBirth when creating a patient user', async () => {
       const repository = new UsersRepository(

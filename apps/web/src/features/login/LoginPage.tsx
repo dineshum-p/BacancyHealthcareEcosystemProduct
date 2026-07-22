@@ -76,10 +76,20 @@ interface LoginFlowProps {
  */
 function LoginFlow({ onAuthenticated, initialTenantSlug }: LoginFlowProps) {
   const [challenge, setChallenge] = useState<MfaChallengeState | null>(null);
+  /**
+   * BAC-49: `POST /auth/login` returns a `PasswordResetRequiredChallenge`
+   * (not full `AuthTokens`) for an admin-provisioned account (BAC-48) that
+   * has not yet completed `POST /auth/reset-temporary-password`. Building
+   * the actual reset form is a separate, not-yet-implemented frontend
+   * ticket -- this only prevents mistyping/misusing that response as a
+   * complete token pair, surfacing an explicit message instead.
+   */
+  const [passwordResetRequired, setPasswordResetRequired] = useState(false);
   const loginMutation = useLogin();
   const verifyMutation = useVerifyMfaLogin();
 
   function handleLoginSubmit(values: LoginFormValues) {
+    setPasswordResetRequired(false);
     const input: LoginInput = values;
     loginMutation.mutate(input, {
       onSuccess: (result) => {
@@ -88,6 +98,8 @@ function LoginFlow({ onAuthenticated, initialTenantSlug }: LoginFlowProps) {
             tenantId: input.tenantId,
             mfaChallengeToken: result.mfaChallengeToken,
           });
+        } else if ("passwordResetRequired" in result) {
+          setPasswordResetRequired(true);
         } else {
           onAuthenticated(result);
         }
@@ -131,7 +143,12 @@ function LoginFlow({ onAuthenticated, initialTenantSlug }: LoginFlowProps) {
           </p>
         </CardHeader>
         <CardContent>
-          {challenge ? (
+          {passwordResetRequired ? (
+            <p className="text-sm text-muted-foreground">
+              This account must reset its temporary password before signing
+              in. Please contact your administrator.
+            </p>
+          ) : challenge ? (
             <MfaChallengeForm
               onSubmit={handleMfaSubmit}
               isSubmitting={isSubmitting}
