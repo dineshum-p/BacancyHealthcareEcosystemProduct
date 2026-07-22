@@ -28,6 +28,7 @@ describe('AuthController', () => {
       updateUserRole: jest.fn(),
       seedClinicAdmin: jest.fn(),
       createProviderAccount: jest.fn(),
+      resetTemporaryPassword: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
     controller = new AuthController(service);
   });
@@ -234,5 +235,51 @@ describe('AuthController', () => {
     await expect(controller.createProviderAccount(dto)).resolves.toBe(created);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
     expect(service.createProviderAccount).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates POST /auth/reset-temporary-password to the service using the authenticated user id and the dto (BAC-49)', async () => {
+    const dto = {
+      currentPassword: 'old-temp-password',
+      newPassword: 'brand-new-password-1',
+    };
+    const tokens: AuthTokens = {
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresIn: 900,
+    };
+    service.resetTemporaryPassword.mockResolvedValue(tokens);
+
+    await expect(
+      controller.resetTemporaryPassword(
+        makeAuthenticatedRequest('user-1'),
+        dto,
+      ),
+    ).resolves.toBe(tokens);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.resetTemporaryPassword).toHaveBeenCalledWith('user-1', dto);
+  });
+
+  it('reset-temporary-password throws if AccessTokenGuard did not populate request.user', () => {
+    const request = {} as RequestWithAuth;
+    const dto = { currentPassword: 'old', newPassword: 'brand-new-password-1' };
+
+    expect(() => controller.resetTemporaryPassword(request, dto)).toThrow();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.resetTemporaryPassword).not.toHaveBeenCalled();
+  });
+
+  it('returns a passwordResetRequired challenge from login when the service reports one (BAC-49)', async () => {
+    const dto = { email: 'grace.hopper@example.com', password: 'temp-pass' };
+    service.login.mockResolvedValue({
+      passwordResetRequired: true,
+      accessToken: 'restricted.access.token',
+      expiresIn: 900,
+    });
+
+    await expect(controller.login(dto)).resolves.toEqual({
+      passwordResetRequired: true,
+      accessToken: 'restricted.access.token',
+      expiresIn: 900,
+    });
   });
 });

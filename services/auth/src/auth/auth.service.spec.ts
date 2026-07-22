@@ -3,7 +3,11 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { AuthTokens, MfaChallenge } from '@hep/shared-types';
+import type {
+  AuthTokens,
+  MfaChallenge,
+  PasswordResetRequiredChallenge,
+} from '@hep/shared-types';
 import { AuthService } from './auth.service';
 import { UsersRepository } from './users.repository';
 import { RefreshTokensRepository } from './refresh-tokens.repository';
@@ -80,6 +84,7 @@ describe('AuthService', () => {
       create: jest.fn(),
       count: jest.fn().mockResolvedValue(1),
       updateRole: jest.fn(),
+      resetPassword: jest.fn(),
       startMfaEnrollment: jest.fn().mockResolvedValue(undefined),
       activateMfa: jest.fn(),
       recordMfaStepIfNewer: jest.fn(),
@@ -1157,6 +1162,140 @@ describe('AuthService', () => {
           totpCode: '123456',
         }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('login when mustResetPassword is true (BAC-49, AC1)', () => {
+    const dto: LoginDto = {
+      email: 'Ada@Example.com',
+      password: 'correct-temp-password',
+    };
+
+    it('authenticates but withholds a full token pair, signalling passwordResetRequired', async () => {
+      const passwordHash = await hashPassword('correct-temp-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mustResetPassword: true }),
+      );
+
+      const result = (await service.login(
+        dto,
+      )) as PasswordResetRequiredChallenge;
+
+      expect(result).toEqual({
+        passwordResetRequired: true,
+        accessToken: 'signed.jwt.token',
+        expiresIn: 900,
+      });
+      expect(result).not.toHaveProperty('refreshToken');
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(refreshTokensRepository.create).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(accessTokenService.sign).toHaveBeenCalledWith({
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        role: UserRole.STAFF,
+      });
+    });
+
+    it('still rejects a wrong password with the uniform 401, never reaching the reset-required branch', async () => {
+      const passwordHash = await hashPassword('correct-temp-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mustResetPassword: true }),
+      );
+
+      await expect(
+        service.login({ ...dto, password: 'wrong-password' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(accessTokenService.sign).not.toHaveBeenCalled();
+    });
+
+    it('issues a normal full token pair (no regression) once mustResetPassword is false (AC3)', async () => {
+      const passwordHash = await hashPassword('correct-temp-password');
+      usersRepository.findByEmail.mockResolvedValue(
+        makeUser({ passwordHash, mustResetPassword: false }),
+      );
+      refreshTokensRepository.create.mockImplementation((entry) =>
+        Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
+      );
+
+      const result = (await service.login(dto)) as AuthTokens;
+
+      expect(result.accessToken).toBe('signed.jwt.token');
+      expect(typeof result.refreshToken).toBe('string');
+      expect(result).not.toHaveProperty('passwordResetRequired');
+    });
+  });
+
+  describe('resetTemporaryPassword (BAC-49, AC2)', () => {
+    it('verifies the current password, hashes the new one, flips mustResetPassword, and issues full tokens', async () => {
+      const currentPasswordHash = await hashPassword('old-temp-password');
+      const user = makeUser({
+        passwordHash: currentPasswordHash,
+        mustResetPassword: true,
+      });
+      usersRepository.findById.mockResolvedValue(user);
+      usersRepository.resetPassword.mockImplementation((userId, passwordHash) =>
+        Promise.resolve({
+          ...user,
+          id: userId,
+          passwordHash,
+          mustResetPassword: false,
+        }),
+      );
+      refreshTokensRepository.create.mockImplementation((entry) =>
+        Promise.resolve({ ...entry, revoked: false, createdAt: new Date() }),
+      );
+
+      const result = await service.resetTemporaryPassword('user-1', {
+        currentPassword: 'old-temp-password',
+        newPassword: 'brand-new-password-1',
+      });
+
+      expect(result.accessToken).toBe('signed.jwt.token');
+      expect(typeof result.refreshToken).toBe('string');
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.resetPassword).toHaveBeenCalledWith(
+        'user-1',
+        expect.any(String),
+      );
+      const [, persistedHash] = usersRepository.resetPassword.mock.calls[0];
+      expect(persistedHash).not.toBe('brand-new-password-1');
+      await expect(
+        verifyPassword(persistedHash, 'brand-new-password-1'),
+      ).resolves.toBe(true);
+    });
+
+    it('rejects an incorrect current password with 401 and never persists a new hash', async () => {
+      const currentPasswordHash = await hashPassword('old-temp-password');
+      usersRepository.findById.mockResolvedValue(
+        makeUser({
+          passwordHash: currentPasswordHash,
+          mustResetPassword: true,
+        }),
+      );
+
+      await expect(
+        service.resetTemporaryPassword('user-1', {
+          currentPassword: 'wrong-password',
+          newPassword: 'brand-new-password-1',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.resetPassword).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the authenticated caller no longer exists', async () => {
+      usersRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.resetTemporaryPassword('ghost-user', {
+          currentPassword: 'anything',
+          newPassword: 'brand-new-password-1',
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+      expect(usersRepository.resetPassword).not.toHaveBeenCalled();
     });
   });
 });

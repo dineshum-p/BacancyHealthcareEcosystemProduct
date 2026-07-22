@@ -208,8 +208,52 @@ export interface MfaChallenge {
   mfaChallengeToken: string;
 }
 
-/** `POST /auth/login`'s response is one of these two shapes (BAC-6, AC3). */
-export type LoginResult = AuthTokens | MfaChallenge;
+/**
+ * Returned by `POST /auth/login` (BAC-49) instead of `AuthTokens` when the
+ * authenticating account has `mustResetPassword: true` (BAC-48, e.g. a
+ * doctor account a `clinic_admin` just created with a system-generated
+ * temporary password). The email/password ARE correct -- this is not a
+ * failed login -- but a normal, fully-usable access/refresh token PAIR is
+ * withheld until `POST /auth/reset-temporary-password` completes.
+ * `accessToken` is a real, `AccessTokenGuard`-verifiable token signed the
+ * same way as any other login's (so it can be used as a normal
+ * `Authorization: Bearer` header against that ONE reset endpoint, mirroring
+ * every other authenticated route's convention instead of inventing a
+ * separate challenge-token verification path like BAC-6's
+ * `MfaChallengeToken`) -- but deliberately NO `refreshToken` is issued
+ * alongside it: once this access token's short TTL expires, the caller must
+ * log in again rather than silently refresh an unreset session forever.
+ */
+export interface PasswordResetRequiredChallenge {
+  passwordResetRequired: true;
+  accessToken: string;
+  /** Access token lifetime, in seconds. */
+  expiresIn: number;
+}
+
+/**
+ * `POST /auth/login`'s response is one of these three shapes (BAC-6 AC3;
+ * BAC-49 AC1 adds `PasswordResetRequiredChallenge`).
+ */
+export type LoginResult =
+  | AuthTokens
+  | MfaChallenge
+  | PasswordResetRequiredChallenge;
+
+/**
+ * Request body for `POST /auth/reset-temporary-password` (BAC-49): the
+ * authenticated caller (identified by their Bearer access token, exactly
+ * like `POST /auth/mfa/enroll`/`verify` -- never by anything in this body)
+ * proves they know their CURRENT password and chooses a new one, meeting the
+ * same password policy `POST /auth/register` already enforces
+ * (`RegisterDto`'s `@MinLength(8)`/`@MaxLength(200)`). On success, their
+ * account's `mustResetPassword` flips to `false` and a normal `AuthTokens`
+ * pair is issued (see `AuthService.resetTemporaryPassword`'s doc comment).
+ */
+export interface ResetTemporaryPasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
 
 /**
  * `services/notification` (BAC-9). Channels a notification can be dispatched
