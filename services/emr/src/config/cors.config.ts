@@ -15,10 +15,13 @@ const DEV_DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000'];
 
 /**
  * Methods the browser calls on this service: `POST /fhir/Patient`,
- * `GET /fhir/Patient/:id`, `POST /patients/:patientId/encounters`, and
- * `GET /patients/:patientId/encounters`.
+ * `GET /fhir/Patient/:id`, `POST /patients/:patientId/encounters`,
+ * `GET /patients/:patientId/encounters`, and `GET`/`PUT
+ * /patients/:patientId/profile` (BAC-44/BAC-46 -- `PUT` added here when the
+ * save-profile form was built; missing it silently fails the browser's CORS
+ * preflight for that request, not something a route handler ever sees).
  */
-const ALLOWED_METHODS = ['GET', 'POST'];
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT'];
 
 /**
  * Headers the frontend sends. Every route on this service is guarded by
