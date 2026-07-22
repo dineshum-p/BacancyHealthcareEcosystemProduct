@@ -19,4 +19,12 @@ export enum Permission {
    * `role-permissions.map.ts`.
    */
   VIEW_USERS = 'view_users',
+  /**
+   * BAC-48: grants access to `POST /auth/users`, the admin-only,
+   * direct-account-creation endpoint (currently scoped to provisioning
+   * `provider` accounts only -- see `AuthController.createProviderAccount`'s
+   * doc comment). Granted to `SUPER_ADMIN`/`CLINIC_ADMIN` only, mirroring
+   * `MANAGE_USER_ROLES`'s existing grant.
+   */
+  CREATE_STAFF_ACCOUNT = 'create_staff_account',
 }

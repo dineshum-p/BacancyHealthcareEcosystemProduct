@@ -1,5 +1,6 @@
 import type {
   AuthTokens,
+  CreateProviderAccountResponse,
   MfaActivation,
   MfaEnrollment,
   RegisteredUser,
@@ -26,6 +27,7 @@ describe('AuthController', () => {
       listRoles: jest.fn(),
       updateUserRole: jest.fn(),
       seedClinicAdmin: jest.fn(),
+      createProviderAccount: jest.fn(),
     } as unknown as jest.Mocked<AuthService>;
     controller = new AuthController(service);
   });
@@ -204,5 +206,33 @@ describe('AuthController', () => {
     await expect(controller.seedClinicAdmin(dto)).resolves.toBe(seeded);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
     expect(service.seedClinicAdmin).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates POST /auth/users to the service (BAC-48)', async () => {
+    const dto = {
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      dateOfBirth: '1980-01-15',
+      gender: 'female' as const,
+      email: 'grace.hopper@example.com',
+      phone: '+1-555-0100',
+      address: '1 Infinite Loop',
+      role: 'provider' as const,
+    };
+    const created: CreateProviderAccountResponse = {
+      id: 'user-5',
+      email: 'grace.hopper@example.com',
+      role: UserRole.PROVIDER,
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      createdAt: new Date().toISOString(),
+      mustResetPassword: true,
+      temporaryPassword: 'generated-temp-password',
+    };
+    service.createProviderAccount.mockResolvedValue(created);
+
+    await expect(controller.createProviderAccount(dto)).resolves.toBe(created);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock
+    expect(service.createProviderAccount).toHaveBeenCalledWith(dto);
   });
 });

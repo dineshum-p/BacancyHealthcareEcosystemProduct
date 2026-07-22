@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { QueryResult } from 'pg';
+import type { PatientGender } from '@hep/shared-types';
 import { TenantContextService } from '../tenant-context/tenant-context.service';
 import { quoteSchemaIdentifier } from '../tenants/schema-identifier.util';
 import { User } from './user.entity';
@@ -20,10 +21,14 @@ interface UserRow {
   first_name: string | null;
   last_name: string | null;
   date_of_birth: Date | string | null;
+  gender: string | null;
+  phone: string | null;
+  address: string | null;
+  must_reset_password: boolean;
 }
 
 const USER_COLUMNS =
-  'id, email, password_hash, role, created_at, mfa_status, mfa_secret_encrypted, mfa_last_used_step, first_name, last_name, date_of_birth';
+  'id, email, password_hash, role, created_at, mfa_status, mfa_secret_encrypted, mfa_last_used_step, first_name, last_name, date_of_birth, gender, phone, address, must_reset_password';
 
 interface NewUser {
   id: string;
@@ -35,6 +40,12 @@ interface NewUser {
   lastName?: string;
   /** ISO-8601 date (`YYYY-MM-DD`). */
   dateOfBirth?: string;
+  /** BAC-48: only ever set when creating a `role: UserRole.PROVIDER` account via `AuthService.createProviderAccount`. */
+  gender?: PatientGender;
+  phone?: string;
+  address?: string;
+  /** BAC-48: defaults to `false` (see `User.mustResetPassword`'s doc comment). */
+  mustResetPassword?: boolean;
 }
 
 const POSTGRES_UNIQUE_VIOLATION = '23505';
@@ -113,8 +124,8 @@ export class UsersRepository {
     );
     try {
       const result: QueryResult<UserRow> = await client.query(
-        `INSERT INTO ${schema}.users (id, email, password_hash, role, first_name, last_name, date_of_birth)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO ${schema}.users (id, email, password_hash, role, first_name, last_name, date_of_birth, gender, phone, address, must_reset_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING ${USER_COLUMNS}`,
         [
           user.id,
@@ -124,6 +135,10 @@ export class UsersRepository {
           user.firstName ?? null,
           user.lastName ?? null,
           user.dateOfBirth ?? null,
+          user.gender ?? null,
+          user.phone ?? null,
+          user.address ?? null,
+          user.mustResetPassword ?? false,
         ],
       );
       return this.toEntity(result.rows[0]);
@@ -245,6 +260,10 @@ export class UsersRepository {
       lastName: row.last_name,
       dateOfBirth:
         row.date_of_birth === null ? null : toIsoDate(row.date_of_birth),
+      gender: row.gender as PatientGender | null,
+      phone: row.phone,
+      address: row.address,
+      mustResetPassword: row.must_reset_password,
     };
   }
 }

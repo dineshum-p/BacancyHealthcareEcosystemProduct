@@ -58,6 +58,10 @@ export class AuthSchemaProvisioner {
         first_name TEXT NULL,
         last_name TEXT NULL,
         date_of_birth DATE NULL,
+        gender TEXT NULL,
+        phone TEXT NULL,
+        address TEXT NULL,
+        must_reset_password BOOLEAN NOT NULL DEFAULT false,
         UNIQUE (email)
       )`,
     );
@@ -86,6 +90,21 @@ export class AuthSchemaProvisioner {
     );
     await this.pool.query(
       `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS date_of_birth DATE NULL`,
+    );
+    // Same defensive-migration pattern (BAC-48): backfills the
+    // admin-created-provider-account columns for a schema provisioned
+    // before they existed.
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS gender TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS phone TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS address TEXT NULL`,
+    );
+    await this.pool.query(
+      `ALTER TABLE ${schema}.users ADD COLUMN IF NOT EXISTS must_reset_password BOOLEAN NOT NULL DEFAULT false`,
     );
 
     await this.createTableIfMissing(

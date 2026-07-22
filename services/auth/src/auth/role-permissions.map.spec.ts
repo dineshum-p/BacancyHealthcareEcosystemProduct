@@ -42,6 +42,24 @@ describe('role-permissions.map', () => {
     }
   });
 
+  it('BAC-48: grants CREATE_STAFF_ACCOUNT to super_admin and clinic_admin only', () => {
+    expect(
+      roleHasPermission(UserRole.SUPER_ADMIN, Permission.CREATE_STAFF_ACCOUNT),
+    ).toBe(true);
+    expect(
+      roleHasPermission(UserRole.CLINIC_ADMIN, Permission.CREATE_STAFF_ACCOUNT),
+    ).toBe(true);
+    expect(
+      roleHasPermission(UserRole.PROVIDER, Permission.CREATE_STAFF_ACCOUNT),
+    ).toBe(false);
+    expect(
+      roleHasPermission(UserRole.STAFF, Permission.CREATE_STAFF_ACCOUNT),
+    ).toBe(false);
+    expect(
+      roleHasPermission(UserRole.PATIENT, Permission.CREATE_STAFF_ACCOUNT),
+    ).toBe(false);
+  });
+
   it('getPermissionsForRole returns the exact permission set for a role', () => {
     expect(getPermissionsForRole(UserRole.STAFF)).toEqual([
       Permission.VIEW_USERS,

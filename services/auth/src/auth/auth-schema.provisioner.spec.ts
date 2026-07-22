@@ -62,6 +62,55 @@ describe('AuthSchemaProvisioner', () => {
     });
   });
 
+  it('creates the users table with BAC-48 provider-account columns defaulted to null/false', async () => {
+    const provisioner = new AuthSchemaProvisioner(pool);
+
+    await provisioner.ensureProvisioned('tenant_acme');
+    await pool.query(
+      `INSERT INTO "tenant_acme".users (id, email, password_hash, role)
+       VALUES ('33333333-3333-3333-3333-333333333333', 'no-gender@example.com', 'hash', 'staff')`,
+    );
+
+    const result = await pool.query(
+      'SELECT gender, phone, address, must_reset_password FROM "tenant_acme".users',
+    );
+    expect(result.rows[0]).toEqual({
+      gender: null,
+      phone: null,
+      address: null,
+      must_reset_password: false,
+    });
+  });
+
+  it('adds the BAC-48 provider-account columns to a users table that already existed without them', async () => {
+    // Simulates a tenant schema provisioned before BAC-48 shipped.
+    await pool.query(
+      `CREATE TABLE "tenant_acme".users (
+        id UUID PRIMARY KEY,
+        email TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        mfa_status TEXT NOT NULL DEFAULT 'none',
+        mfa_secret_encrypted TEXT NULL,
+        mfa_last_used_step BIGINT NULL,
+        first_name TEXT NULL,
+        last_name TEXT NULL,
+        date_of_birth DATE NULL,
+        UNIQUE (email)
+      )`,
+    );
+    const provisioner = new AuthSchemaProvisioner(pool);
+
+    await provisioner.ensureProvisioned('tenant_acme');
+
+    await expect(
+      pool.query(
+        'SELECT gender, phone, address, must_reset_password FROM "tenant_acme".users',
+      ),
+    ).resolves.toMatchObject({ rows: [] });
+  });
+
   it('adds the BAC-42 identity columns to a users table that already existed without them', async () => {
     // Simulates a tenant schema provisioned before BAC-42 shipped.
     await pool.query(
