@@ -70,7 +70,25 @@ export class EmrSchemaProvisioner {
 
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
-  /** Idempotently ensures `<schema>.patients` exists (BAC-10, AC1/AC2). */
+  /**
+   * Idempotently ensures `<schema>.fhir_patients` exists (BAC-10, AC1/AC2).
+   *
+   * Named `fhir_patients`, NOT `patients`: in local dev every service is
+   * deliberately pointed at one shared Postgres database
+   * (`scripts/start-all-local.sh`, so the shared `public.tenants` registry
+   * works across services), which means this service's per-tenant schema is
+   * the SAME schema `services/patient`'s `PatientSchemaProvisioner`
+   * provisions its own, differently-shaped `<schema>.patients` table
+   * (BAC-14: `mrn`/`first_name`/... columns, no `resource` column) into.
+   * Two services racing to `CREATE TABLE` a same-named table in a shared
+   * schema means whichever runs first silently "wins" (the loser's own
+   * `CREATE TABLE` hits "already exists" and is swallowed by this method's
+   * idempotency check below, believing it's re-provisioning ITS OWN table)
+   * -- so a caller landing here can silently get the WRONG service's table.
+   * A distinct name is the only fix that holds under both this shared-DB
+   * local topology and a real deployment's separate-database-per-service
+   * topology (see each service's own `.env.example`).
+   */
   async ensurePatientsTable(schemaName: string): Promise<void> {
     if (this.provisionedPatientsSchemas.has(schemaName)) {
       return;
@@ -79,7 +97,7 @@ export class EmrSchemaProvisioner {
 
     try {
       await this.pool.query(`
-        CREATE TABLE ${schema}.patients (
+        CREATE TABLE ${schema}.fhir_patients (
           id UUID PRIMARY KEY,
           resource JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
